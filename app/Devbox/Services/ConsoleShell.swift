@@ -16,12 +16,6 @@ struct ShellLine: Identifiable {
     var role: LineRole
 }
 
-/// Console **thật** của app.
-///
-/// Bản này chỉ chạy những lệnh đọc trạng thái thật trên máy
-/// (JIT, RAM, kernel, dung lượng, file trong sandbox).
-/// Không có lệnh Linux giả: khi engine QEMU được nối ở M1,
-/// các lệnh của guest sẽ đi qua đúng console này.
 final class ConsoleShell: ObservableObject {
     @Published private(set) var lines: [ShellLine] = []
     @Published private(set) var cwd: String = "~"
@@ -124,8 +118,6 @@ final class ConsoleShell: ObservableObject {
         append("", .output)
         trimHistory()
     }
-
-    // MARK: - Lệnh thật
 
     private func printJIT() {
         let device = DeviceProbe.snapshot()
@@ -296,8 +288,6 @@ final class ConsoleShell: ObservableObject {
         append("Giữ nền: \(BackgroundKeeper.shared.stateText)", BackgroundKeeper.shared.isAudioRunning ? .success : .output)
         append("→ Chưa boot được Linux. Không có lệnh nào giả ở đây.", .info)
     }
-
-    // MARK: - Helpers
 
     private func resolve(_ path: String?) -> URL? {
         guard let path, !path.isEmpty else { return currentDirectory }

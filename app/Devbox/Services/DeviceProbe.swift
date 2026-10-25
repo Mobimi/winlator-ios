@@ -30,10 +30,8 @@ struct DeviceSnapshot {
     var physicalMemoryMB: Int
     var cores: Int
     var jit: JITState
-    /// Cờ `CS_DEBUGGED` trong `sysctl.proc_csflags`.
     var debugged: Bool
     var csFlags: UInt32?
-    /// Tiến trình đang bị debugger trace (`P_TRACED` trong `kinfo_proc`).
     var traced: Bool
     var parentPID: Int32
     var pid: Int32
@@ -68,12 +66,6 @@ enum DeviceProbe {
         sysctlString("hw.machine") ?? UIDevice.current.model
     }
 
-    /// JIT trên iOS chỉ có khi tiến trình đang bị debugger attach
-    /// (StikDebug / debugserver) → cờ CS_DEBUGGED bật.
-    ///
-    /// Bài học: `mprotect(PROT_EXEC)` trả về 0 **không** chứng minh JIT đã bật.
-    /// iOS vẫn kill tiến trình khi CPU thực thi trang nhớ chưa được ký,
-    /// nên cách kiểm tra cũ cho kết quả dương tính giả.
     static func jitState() -> JITState {
         guard let flags = csFlags() else { return .unknown }
         return (flags & CS_DEBUGGED) != 0 ? .granted : .denied
@@ -84,8 +76,6 @@ enum DeviceProbe {
         return (flags & CS_DEBUGGED) != 0
     }
 
-    /// Tín hiệu thứ hai: `P_TRACED` cho biết có debugger đang trace tiến trình,
-    /// kể cả khi `CS_DEBUGGED` chưa kịp cập nhật. Dùng để chẩn đoán StikDebug.
     static func traceInfo() -> (traced: Bool, parent: Int32) {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
@@ -95,9 +85,8 @@ enum DeviceProbe {
         return (traced, getppid())
     }
 
-    /// CS_DEBUGGED — chỉ bật khi có debugger attach.
     private static let CS_DEBUGGED: UInt32 = 0x1000_0000
-    /// P_TRACED trong `kinfo_proc.kp_proc.p_flag`.
+
     private static let pTraced: Int32 = 0x0000_0800
 
     static func csFlags() -> UInt32? {

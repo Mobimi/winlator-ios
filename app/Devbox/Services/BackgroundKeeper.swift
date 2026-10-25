@@ -2,33 +2,17 @@ import AVFoundation
 import Combine
 import UIKit
 
-/// Giữ app sống khi rời màn hình, để web server / QEMU trong guest không chết.
-///
-/// iOS **không** cho app chạy nền vô hạn. Cách duy nhất hợp lệ về mặt kỹ thuật
-/// (không phải hợp lệ về mặt App Store) là khai báo `UIBackgroundModes = audio`
-/// rồi thật sự phát audio. Ở đây phát một buffer gần như im lặng (-100 dBFS)
-/// lặp vô hạn bằng `AVAudioEngine` + category `.playback`, `.mixWithOthers`
-/// (để không chặn nhạc của app khác). Hệ thống thấy app đang phát audio nên
-/// không suspend tiến trình, nhờ đó socket của dev server vẫn sống.
-///
-/// Sự thật cần nhớ:
-/// - Bấm Home / chuyển sang app khác: Devbox vẫn chạy → `localhost:<cổng>` vẫn trả lời.
-/// - Vuốt app khỏi đa nhiệm (Force Quit): tiến trình **luôn** chết. Không có API nào chặn được.
-/// - Tốn pin và ấm máy (audio session + QEMU cùng chạy). Tắt công tắc khi không cần.
-/// - `UIBackgroundModes` là khoá **Info.plist**, không phải entitlement.
-///   Vì vậy nó không làm hỏng profile free 7 ngày của Sideloadly/SideStore.
 final class BackgroundKeeper: ObservableObject {
     static let shared = BackgroundKeeper()
 
-    /// Audio im lặng đang phát thật hay không.
     @Published private(set) var isAudioRunning = false
-    /// Lúc bắt đầu giữ nền; `nil` khi đang tắt.
+
     @Published private(set) var startedAt: Date?
-    /// Lỗi gần nhất, hiển thị nguyên văn (không giả vờ thành công).
+
     @Published private(set) var lastError: String?
-    /// Số lần audio bị gián đoạn (cuộc gọi, tai nghe rút, …).
+
     @Published private(set) var interruptionCount = 0
-    /// Có `beginBackgroundTask` đang giữ (~30 giây) hay không.
+
     @Published private(set) var backgroundTaskActive = false
     @Published private(set) var route = "—"
     @Published private(set) var category = "chưa cấu hình"
@@ -47,9 +31,6 @@ final class BackgroundKeeper: ObservableObject {
         refreshSessionInfo()
     }
 
-    // MARK: - Trạng thái
-
-    /// Khoá `UIBackgroundModes` có thật trong Info.plist của bản đang chạy không.
     var hasBackgroundAudioMode: Bool {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         return modes?.contains("audio") ?? false
@@ -75,9 +56,6 @@ final class BackgroundKeeper: ObservableObject {
         return "\(seconds) giây"
     }
 
-    // MARK: - Điều khiển
-
-    /// Bật giữ nền. Gọi lại nhiều lần cũng an toàn.
     func start() {
         wantsAudio = true
         guard !isAudioRunning else {
@@ -117,7 +95,6 @@ final class BackgroundKeeper: ObservableObject {
         refreshSessionInfo()
     }
 
-    /// Tắt giữ nền và trả audio session cho hệ thống.
     func stop() {
         wantsAudio = false
         player.stop()
@@ -140,8 +117,6 @@ final class BackgroundKeeper: ObservableObject {
         if wantsAudio || isAudioRunning { stop() } else { start() }
     }
 
-    // MARK: - Vòng đời app (DevboxApp gọi)
-
     func appBecameActive() {
         endGraceTask()
         refreshSessionInfo()
@@ -151,7 +126,7 @@ final class BackgroundKeeper: ObservableObject {
     }
 
     func appBecameInactive() {
-        // Đang chuyển tiếp (Control Center, cuộc gọi…). Không làm gì để tránh nhấp nháy audio.
+
         refreshSessionInfo()
     }
 
@@ -159,13 +134,11 @@ final class BackgroundKeeper: ObservableObject {
         guard wantsAudio else { return }
         start()
         if !isAudioRunning {
-            // Audio không lên được → chỉ còn ~30 giây do iOS gia hạn.
+
             beginGraceTask()
         }
         refreshSessionInfo()
     }
-
-    // MARK: - Audio engine
 
     private func prepareEngine() throws {
         guard !configured else { return }
@@ -177,8 +150,6 @@ final class BackgroundKeeper: ObservableObject {
 
         buffer.frameLength = buffer.frameCapacity
 
-        // Gần như im lặng (-100 dBFS, tai người không nghe thấy) nhưng **không phải
-        // toàn số 0**, để hệ thống không coi đây là "buffer rỗng" và cắt phiên audio.
         var seed: UInt32 = 0x9E37_79B9
         if let channels = buffer.floatChannelData {
             for index in 0..<Int(buffer.frameLength) {
@@ -220,8 +191,6 @@ final class BackgroundKeeper: ObservableObject {
         }
     }
 
-    // MARK: - Background task ngắn hạn (~30 giây)
-
     private func beginGraceTask() {
         guard taskID == .invalid else { return }
         backgroundTaskActive = true
@@ -246,8 +215,6 @@ final class BackgroundKeeper: ObservableObject {
         taskID = .invalid
         backgroundTaskActive = false
     }
-
-    // MARK: - Thông báo hệ thống
 
     private func installObservers() {
         let center = NotificationCenter.default
@@ -302,7 +269,7 @@ final class BackgroundKeeper: ObservableObject {
         case .began:
             interruptionCount += 1
             isAudioRunning = false
-            // Chỉ xin thêm thời gian khi đang ở nền; ở foreground không cần.
+
             if wantsAudio && UIApplication.shared.applicationState == .background {
                 beginGraceTask()
             }
@@ -313,7 +280,7 @@ final class BackgroundKeeper: ObservableObject {
                 start()
             }
             if wantsAudio && !options.contains(.shouldResume) {
-                // Hệ thống không cho tự resume; vẫn thử lại vì ta là audio im lặng.
+
                 start()
             }
         @unknown default:
@@ -321,8 +288,6 @@ final class BackgroundKeeper: ObservableObject {
         }
         refreshSessionInfo()
     }
-
-    // MARK: - Helpers
 
     private func message(for error: Error) -> String {
         if let keeper = error as? KeeperError {

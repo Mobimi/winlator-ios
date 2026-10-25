@@ -1,8 +1,6 @@
 import Foundation
 import UIKit
 
-/// Tạo một khối text ngắn, đầy đủ trạng thái thật, để người dùng copy
-/// dán vào chat (không cần chụp ảnh).
 enum Diagnostics {
     static func text() -> String {
         let device = DeviceProbe.snapshot()

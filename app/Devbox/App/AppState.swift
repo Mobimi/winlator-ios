@@ -45,9 +45,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// StikDebug có thể attach **sau** khi app đã mở, nên chờ JIT bằng cách
-    /// đọc lại `proc_csflags` mỗi 4 giây cho tới khi thấy CS_DEBUGGED.
-    /// Ngừng khi đã bật hoặc khi app vào nền. Không có số liệu giả.
     func startJITPolling() {
         refreshDevice()
         guard !device.jit.isGranted, jitTimer == nil else { return }
@@ -72,7 +69,6 @@ final class AppState: ObservableObject {
         ensureFolder(for: project)
     }
 
-    /// Xoá khỏi danh sách nhưng **không** xoá file trên đĩa.
     func delete(_ project: Project) {
         projects.removeAll { $0.id == project.id }
     }

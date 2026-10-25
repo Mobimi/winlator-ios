@@ -7,8 +7,6 @@ struct PreviewTarget: Identifiable {
     let port: Int
 }
 
-/// Khung web thật cho dev server trong guest.
-/// Chưa dùng được ở bản hiện tại vì chưa có QEMU + port forwarding (M2).
 struct WebPreviewView: View {
     let target: PreviewTarget
 
