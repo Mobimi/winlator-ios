@@ -9,7 +9,7 @@ on:
       - ".github/workflows/build-engine.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   engine:
@@ -61,3 +61,15 @@ jobs:
           name: devbox-engine-ios-arm64
           path: engine/out/
           if-no-files-found: error
+
+      - name: Publish engine frameworks
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd engine/out
+          zip -qry "$RUNNER_TEMP/devbox-engine.zip" Frameworks
+          gh release view engine-v1 >/dev/null 2>&1 || \
+            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks."
+          gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine.zip" --clobber
+          ls -lh "$RUNNER_TEMP/devbox-engine.zip"
