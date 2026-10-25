@@ -101,6 +101,7 @@ apt-get install -y -qq --no-install-recommends \
   libsqlite3-dev libncurses-dev libgdbm-dev libnss3-dev libxml2-dev libxslt1-dev \
   libjpeg-dev libpng-dev libfreetype6-dev libpq-dev \
   git curl wget nano less htop unzip xz-utils ca-certificates gnupg \
+  iproute2 procps iputils-ping \
   locales sudo bash \
   linux-image-arm64
 
