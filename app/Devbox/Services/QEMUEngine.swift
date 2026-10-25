@@ -105,6 +105,7 @@ final class QEMUEngine: ObservableObject {
             Self.trace("exec memory probe failed: \(jit.note)")
             refreshLog()
             state = .failed("iOS không cấp bộ nhớ thực thi cho QEMU: \(jit.note)")
+            saveDiagnostics()
             return
         }
 
@@ -162,6 +163,22 @@ final class QEMUEngine: ObservableObject {
     func persistedLog() -> String {
         guard let logURL, let data = try? Data(contentsOf: logURL) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    var logFileURL: URL { DevboxConfig.qemuLogURL }
+
+    func ensureLogFile() -> URL {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: DevboxConfig.logsDirectory, withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: DevboxConfig.qemuLogURL.path) {
+            fm.createFile(atPath: DevboxConfig.qemuLogURL.path, contents: nil)
+        }
+        return DevboxConfig.qemuLogURL
+    }
+
+    @discardableResult
+    func saveDiagnostics() -> URL? {
+        Diagnostics.write()
     }
 
     func preflight() -> String {
@@ -347,6 +364,7 @@ final class QEMUEngine: ObservableObject {
                 self.logLines = [message]
             }
             self.state = .failed(message)
+            self.saveDiagnostics()
         }
     }
 
@@ -358,9 +376,16 @@ final class QEMUEngine: ObservableObject {
     }
 
     private func prepareLog() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("qemu.log")
-        try? FileManager.default.removeItem(at: url)
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let fm = FileManager.default
+        let directory = DevboxConfig.logsDirectory
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = DevboxConfig.qemuLogURL
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 {
+            let previous = directory.appendingPathComponent("qemu-previous.log")
+            try? fm.removeItem(at: previous)
+            try? fm.moveItem(at: url, to: previous)
+        }
+        fm.createFile(atPath: url.path, contents: nil)
         logURL = url
         QEMUEngine.openTrace(url: url)
     }
@@ -391,6 +416,7 @@ final class QEMUEngine: ObservableObject {
                 self.state = .failed("QEMU chưa vào main loop sau 90 giây (JIT: \(jit)). Bước cuối: \(self.lastStage). Copy log để xem.")
             }
             self.stopLogTimer()
+            self.saveDiagnostics()
         }
         RunLoop.main.add(timer, forMode: .common)
         watchdog = timer

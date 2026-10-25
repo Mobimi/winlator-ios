@@ -7,9 +7,24 @@ enum DevboxConfig {
     static let consolePort: UInt16 = 4444
     static let qmpPort: UInt16 = 4445
 
+    static var documents: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
     static var root: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent("Devbox", isDirectory: true)
+        documents.appendingPathComponent("Devbox", isDirectory: true)
+    }
+
+    static var logsDirectory: URL {
+        documents.appendingPathComponent("logs", isDirectory: true)
+    }
+
+    static var qemuLogURL: URL {
+        logsDirectory.appendingPathComponent("qemu.log")
+    }
+
+    static var diagnosticsURL: URL {
+        logsDirectory.appendingPathComponent("diagnostics.txt")
     }
 
     static var imagesRoot: URL { root.appendingPathComponent("images", isDirectory: true) }

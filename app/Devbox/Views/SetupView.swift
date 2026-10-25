@@ -12,6 +12,8 @@ struct SetupView: View {
     @State private var preview: PreviewTarget?
     @State private var engineCheck: String?
     @State private var logCopied = false
+    @State private var savedToFiles = false
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         NavigationStack {
@@ -178,10 +180,29 @@ struct SetupView: View {
                         Label("Kiểm tra engine (không boot)", systemImage: "stethoscope")
                     }
                     .disabled(engine.state.isActive)
+
+                    Button {
+                        shareEngineFiles()
+                    } label: {
+                        Label("Chia sẻ file log", systemImage: "square.and.arrow.up")
+                    }
+                    .sheet(item: $shareItem) { item in
+                        ShareSheet(items: item.urls)
+                    }
+
+                    Button {
+                        engine.saveDiagnostics()
+                        savedToFiles = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                            savedToFiles = false
+                        }
+                    } label: {
+                        Label(savedToFiles ? "Đã lưu vào Files/logs" : "Lưu chẩn đoán vào Files", systemImage: savedToFiles ? "checkmark.circle.fill" : "folder.badge.plus")
+                    }
                 } header: {
                     Text("Engine")
                 } footer: {
-                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. “Kiểm tra engine” chỉ nạp thư viện và thử cấp phát bộ nhớ exec, không khởi động máy ảo — dùng để biết lỗi nằm ở thư viện hay ở JIT.")
+                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. “Kiểm tra engine” chỉ nạp thư viện và thử cấp phát bộ nhớ exec, không khởi động máy ảo — dùng để biết lỗi nằm ở thư viện hay ở JIT.\n\nLog nằm trong app Files: Trên iPhone của tôi → Devbox → logs → qemu.log (lần boot trước là qemu-previous.log, chẩn đoán là diagnostics.txt). Không cần copy tay: mở Files để xem, hoặc bấm “Chia sẻ file log” để gửi qua AirDrop/Telegram.")
                 }
 
                 Section {
@@ -268,6 +289,14 @@ struct SetupView: View {
         }
     }
 
+    private func shareEngineFiles() {
+        var urls: [URL] = [engine.ensureLogFile()]
+        if let diagnostics = engine.saveDiagnostics() {
+            urls.append(diagnostics)
+        }
+        shareItem = ShareItem(urls: urls)
+    }
+
     private var portsText: String {
         if !images.isInstalled {
             return "Cần cài image trước"
@@ -293,6 +322,11 @@ struct SetupView: View {
         case .unknown: return .orange
         }
     }
+}
+
+private struct ShareItem: Identifiable {
+    let id = UUID()
+    let urls: [URL]
 }
 
 private struct EngineCheckView: View {

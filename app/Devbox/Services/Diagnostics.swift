@@ -42,6 +42,19 @@ enum Diagnostics {
         return lines.joined(separator: "\n")
     }
 
+    @discardableResult
+    static func write() -> URL? {
+        let directory = DevboxConfig.logsDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = DevboxConfig.diagnosticsURL
+        do {
+            try text().write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     private static func jitText(_ state: JITState) -> String {
         switch state {
         case .granted: return "đã bật"

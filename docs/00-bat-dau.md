@@ -192,10 +192,10 @@ Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở 
 
 ## Gửi mình gì
 
-Không cần chụp ảnh — mọi thứ copy được:
+Không cần chụp ảnh — mọi thứ nằm trong file:
 
 1. Tab **Thiết lập** → **Sao chép chẩn đoán** → dán vào chat.
-2. Nếu boot lỗi: **Sao chép log QEMU** (cùng tab) → dán vào chat.
+2. Nếu boot lỗi: mở app **Files** → **Trên iPhone của tôi** → **Devbox** → **logs** → gửi file `qemu.log` (và `diagnostics.txt`). Hoặc bấm **Chia sẻ file log** trong tab Thiết lập để gửi qua AirDrop/Telegram. Log của lần boot trước giữ ở `qemu-previous.log`.
 3. Kết quả `python3 -V`, `node -v`, `npm -v` trong terminal.
 4. Lỗi Sideloadly/StikDebug nếu có (copy nguyên văn).
 
@@ -219,15 +219,15 @@ Không cần chụp ảnh — mọi thứ copy được:
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | Bấm mở dự án, dải đỏ báo `Thiếu engine QEMU…` | IPA tải từ run cũ (trước khi nhúng engine) | Tải lại IPA ở run **Build iOS IPA** mới nhất, cài lại |
-| Dải đỏ `QEMU gọi exit() khi khởi động…` | QEMU tự thoát trong lúc init (thiếu bộ nhớ exec, tham số, hoặc framework) | Tab **Thiết lập** → **Kiểm tra engine (không boot)**, rồi **Sao chép log QEMU** và gửi. Log giờ ghi từng bước `dlopen` → `qemu_init` → `main loop` |
-| Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | **Sao chép log QEMU**; xem dòng `stage:` cuối cùng để biết treo ở đâu |
+| Dải đỏ `QEMU gọi exit() khi khởi động…` | QEMU tự thoát trong lúc init (thiếu bộ nhớ exec, tham số, hoặc framework) | Tab **Thiết lập** → **Kiểm tra engine (không boot)**, rồi gửi file `logs/qemu.log` trong app Files. Log ghi từng bước `dlopen` → `qemu_init` → `main loop` |
+| Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | Xem `logs/qemu.log`; dòng `[t+…] stage:` cuối cùng cho biết treo ở đâu |
 | Dải đỏ `iOS không cấp bộ nhớ thực thi cho QEMU…` | `mmap RWX` bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi kết quả |
 | Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
 | Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
 | Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |
 | Tải image báo `SHA256 … không khớp` | Tải hỏng hoặc mạng chèn | Xoá image trong Thiết lập rồi tải lại |
 | Tải image báo `Không đủ dung lượng` | Cần ~3 GB trống | Xoá bớt app/ảnh; iOS không cho app chiếm hết đĩa |
-| `Image sẵn sàng` nhưng boot không lên prompt | Console chưa nối / boot chậm | Đợi 90 giây. Vẫn im: xem log QEMU, gửi `diag` |
+| `Image sẵn sàng` nhưng boot không lên prompt | Console chưa nối / boot chậm | Đợi 90 giây. Vẫn im: xem `logs/qemu.log` trong app Files, gửi `diag` |
 | Gõ lệnh mà không thấy gì | Ô nhập đang mất focus / console chưa nối | Bấm vào ô nhập, gửi lại. Dải trên cùng phải ghi `console đã nối` |
 | Web preview không tự mở | Dev server nghe cổng khác 3000/5173/8080, hoặc bind `localhost` trong guest | Chạy với `--host 0.0.0.0` và cổng 3000/5173/8080. Nút **Web** để mở tay |
 | SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |

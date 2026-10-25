@@ -117,7 +117,7 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Gõ `python3 -V`, `node -v`, `npm -v` và gửi kết quả.
 - [ ] Bấm Home 2 phút, quay lại, xem đồng hồ "Đã chạy" trong tab Thiết lập có tăng tiếp không.
 
-Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán** (và **Sao chép log QEMU** nếu có), dán nguyên văn vào chat.
+Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán**, và gửi file `qemu.log` + `diagnostics.txt` trong app Files (`Trên iPhone của tôi → Devbox → logs`) hoặc bấm **Chia sẻ file log**.
 
 ---
 
