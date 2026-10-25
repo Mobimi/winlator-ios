@@ -13,8 +13,6 @@ permissions:
 
 jobs:
   image:
-    # Repo public → runner arm64 native (nhanh).
-    # Repo private → runner x86_64; script tự bật qemu-user + binfmt.
     runs-on: ${{ github.event.repository.private && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 180
 

@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
-#
-# Build image Debian 13 (trixie) ARM64 cho Devbox.
-#
-# Chạy trên GitHub Actions hoặc Linux có root:
-#   sudo bash image/build-image.sh
-#
-# Kết quả trong ./out:
-#   devbox-rootfs.ext4.zst   root filesystem (giải nén ra .ext4 để dùng)
-#   vmlinuz                  kernel ARM64
-#   initrd.img               initramfs
-#   manifest.json            sha256 + phiên bản package
-#   SHA256SUMS
-#
 set -euo pipefail
 
 SUITE="${SUITE:-trixie}"
-# Node lấy từ bản chính thức nodejs.org (không dùng nodejs của Debian,
-# vì trixie chỉ có Node 20). Ghim phiên bản + kiểm tra sha256.
 NODE_VERSION="${NODE_VERSION:-22.23.4}"
 NODE_SHA256="${NODE_SHA256:-6287aa46b6c375d816e63ae66d024fbbfd70404825aabdfdf898a970871d2f4b}"
 export NODE_VERSION NODE_SHA256
@@ -52,7 +37,6 @@ if [ "$(uname -m)" != "aarch64" ]; then
   apt-get install -y -qq --no-install-recommends qemu-user-static binfmt-support
   update-binfmts --enable qemu-aarch64 2>/dev/null || true
 
-  # Fallback: đăng ký binfmt trực tiếp (một số runner không có sẵn).
   if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
     mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
     echo ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:CF' \
@@ -68,7 +52,6 @@ if [ "$(uname -m)" != "aarch64" ]; then
 fi
 
 log "debootstrap $SUITE/$ARCH"
-# shellcheck disable=SC2086
 debootstrap $FOREIGN --arch="$ARCH" --variant=minbase \
   --include=systemd,systemd-sysv,dbus,apt-utils,locales,ca-certificates \
   "$SUITE" "$ROOTFS" "$MIRROR"
@@ -121,7 +104,6 @@ apt-get install -y -qq --no-install-recommends \
   locales sudo bash \
   linux-image-arm64
 
-# pip: PyPI + timeout rộng hơn (mạng trong máy ảo chậm hơn PC)
 cat > /etc/pip.conf <<'EOF'
 [global]
 timeout = 120
@@ -129,16 +111,10 @@ retries = 5
 disable-pip-version-check = true
 EOF
 
-# Debian đánh dấu Python là "externally managed" (PEP 668) → chặn pip toàn cục.
-# Đây là máy ảo sandbox dùng một người, không phải hệ thống production:
-# bỏ marker để `pip install` chạy được đúng như trên PC.
 rm -f /usr/lib/python3*/EXTERNALLY-MANAGED
 
-# pip của Debian không có RECORD → phải --ignore-installed mới nâng cấp được
 python3 -m pip install --no-cache-dir --ignore-installed --upgrade pip setuptools wheel
 
-# Kiểm tra Python chạy thật: tạo venv, tải wheel arm64 từ PyPI, import.
-# Kết quả ghi vào /etc/devbox-python-smoke để đưa vào manifest.
 if python3 -m venv /opt/pysmoke \
    && /opt/pysmoke/bin/pip install -q --no-cache-dir requests numpy pandas \
    && SMOKE="$(/opt/pysmoke/bin/python -c 'import requests, numpy, pandas; print("requests %s, numpy %s, pandas %s" % (requests.__version__, numpy.__version__, pandas.__version__))')"; then
@@ -150,7 +126,6 @@ else
 fi
 rm -rf /opt/pysmoke
 
-# Node 22 chính thức (arm64) vào /usr/local → node, npm, npx
 NODE_TARBALL="node-v${NODE_VERSION}-linux-arm64.tar.xz"
 curl -fsSL -o "/tmp/$NODE_TARBALL" "https://nodejs.org/dist/v${NODE_VERSION}/$NODE_TARBALL"
 echo "${NODE_SHA256}  /tmp/${NODE_TARBALL}" | sha256sum -c -
@@ -159,12 +134,10 @@ rm -f "/tmp/$NODE_TARBALL"
 node -v
 npm -v
 
-# Locale
 sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/default/locale
 
-# User dev (không mật khẩu mạnh — máy một người dùng, không mở cổng ra LAN)
 if ! id dev >/dev/null 2>&1; then
   useradd -m -s /bin/bash -G sudo dev
 fi
@@ -172,21 +145,18 @@ echo 'dev:dev' | chpasswd
 echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev
 chmod 440 /etc/sudoers.d/dev
 
-# Hostname
 echo devbox > /etc/hostname
 cat > /etc/hosts <<'EOF'
 127.0.0.1 localhost
 127.0.1.1 devbox
 EOF
 
-# Thư mục dự án + chia sẻ 9p
 mkdir -p /home/dev/projects /mnt/share
 chown -R dev:dev /home/dev
 cat > /etc/fstab <<'EOF'
 share /mnt/share 9p trans=virtio,version=9p2000.L,nofail,noatime 0 0
 EOF
 
-# Autologin trên serial console (QEMU virtio-console → ttyAMA0)
 mkdir -p /etc/systemd/system/serial-getty@ttyAMA0.service.d
 cat > /etc/systemd/system/serial-getty@ttyAMA0.service.d/autologin.conf <<'EOF'
 [Service]
@@ -198,7 +168,6 @@ ln -sf /lib/systemd/system/serial-getty@.service \
   /etc/systemd/system/getty.target.wants/serial-getty@ttyAMA0.service
 ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
 
-# Agent phát hiện cổng đang LISTEN, ghi ra /mnt/share/.ports để app mở web preview
 cat > /usr/local/bin/portwatch.sh <<'EOF'
 #!/bin/bash
 OUT=/mnt/share/.ports
@@ -234,7 +203,6 @@ mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/portwatch.service \
   /etc/systemd/system/multi-user.target.wants/portwatch.service
 
-# Prompt + vào thẳng thư mục dự án
 cat > /home/dev/.bashrc <<'EOF'
 export PS1='\[\e[32m\]dev@devbox\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ '
 export LANG=en_US.UTF-8
@@ -244,10 +212,8 @@ cd /home/dev/projects 2>/dev/null || true
 EOF
 chown dev:dev /home/dev/.bashrc
 
-# DNS của QEMU user-mode networking
 echo 'nameserver 10.0.2.3' > /etc/resolv.conf
 
-# Giảm service chạy nền
 rm -f /etc/systemd/system/timers.target.wants/apt-daily.timer \
       /etc/systemd/system/timers.target.wants/apt-daily-upgrade.timer \
       /etc/systemd/system/timers.target.wants/man-db.timer 2>/dev/null || true
@@ -286,7 +252,6 @@ mkfs.ext4 -q -F -L devbox -d "$ROOTFS" "$IMAGE"
 e2fsck -fy "$IMAGE" >/dev/null 2>&1 || true
 resize2fs -M "$IMAGE" >/dev/null 2>&1 || true
 
-# Cắt file về đúng kích thước filesystem để zstd không phải đọc 5 GB số 0
 BLOCKS="$(dumpe2fs -h "$IMAGE" 2>/dev/null | awk -F: '/^Block count:/ {gsub(/ /, "", $2); print $2}')"
 BLOCK_SIZE="$(dumpe2fs -h "$IMAGE" 2>/dev/null | awk -F: '/^Block size:/ {gsub(/ /, "", $2); print $2}')"
 if [ -n "${BLOCKS:-}" ] && [ -n "${BLOCK_SIZE:-}" ]; then
