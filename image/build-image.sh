@@ -113,10 +113,35 @@ export LANG=C.UTF-8
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   python3 python3-venv python3-pip python3-dev \
+  build-essential pkg-config cmake \
+  libssl-dev libffi-dev zlib1g-dev libbz2-dev liblzma-dev libreadline-dev \
+  libsqlite3-dev libncurses-dev libgdbm-dev libnss3-dev libxml2-dev libxslt1-dev \
+  libjpeg-dev libpng-dev libfreetype6-dev libpq-dev \
   git curl wget nano less htop unzip xz-utils ca-certificates gnupg \
-  build-essential pkg-config \
   locales sudo bash \
   linux-image-arm64
+
+# pip: PyPI + timeout rộng hơn (mạng trong máy ảo chậm hơn PC)
+cat > /etc/pip.conf <<'EOF'
+[global]
+timeout = 120
+retries = 5
+disable-pip-version-check = true
+EOF
+python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Kiểm tra Python chạy thật: tạo venv, tải wheel arm64 từ PyPI, import.
+# Kết quả ghi vào /etc/devbox-python-smoke để đưa vào manifest.
+if python3 -m venv /opt/pysmoke \
+   && /opt/pysmoke/bin/pip install -q --no-cache-dir requests numpy pandas \
+   && SMOKE="$(/opt/pysmoke/bin/python -c 'import requests, numpy, pandas; print("requests %s, numpy %s, pandas %s" % (requests.__version__, numpy.__version__, pandas.__version__))')"; then
+  printf '%s\n' "$SMOKE" > /etc/devbox-python-smoke
+  echo "python smoke OK: $SMOKE"
+else
+  echo "python smoke FAILED" > /etc/devbox-python-smoke
+  echo "python smoke FAILED (xem log pip ở trên)"
+fi
+rm -rf /opt/pysmoke
 
 # Node 22 chính thức (arm64) vào /usr/local → node, npm, npx
 NODE_TARBALL="node-v${NODE_VERSION}-linux-arm64.tar.xz"
@@ -206,6 +231,8 @@ ln -sf /etc/systemd/system/portwatch.service \
 cat > /home/dev/.bashrc <<'EOF'
 export PS1='\[\e[32m\]dev@devbox\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ '
 export LANG=en_US.UTF-8
+export MAKEFLAGS="-j4"
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 cd /home/dev/projects 2>/dev/null || true
 EOF
 chown dev:dev /home/dev/.bashrc
@@ -236,6 +263,8 @@ cp "$KERNEL" "$OUTDIR/vmlinuz"
 cp "$INITRD" "$OUTDIR/initrd.img"
 
 PY_VERSION="$(chroot "$ROOTFS" python3 --version 2>&1 || echo unknown)"
+PIP_VERSION="$(chroot "$ROOTFS" python3 -m pip --version 2>&1 || echo unknown)"
+PY_SMOKE_RESULT="$(cat "$ROOTFS/etc/devbox-python-smoke" 2>/dev/null || echo skipped)"
 NODE_INSTALLED="$(chroot "$ROOTFS" node -v 2>&1 || echo unknown)"
 NPM_VERSION="$(chroot "$ROOTFS" npm -v 2>&1 || echo unknown)"
 KERNEL_VERSION="$(basename "$KERNEL")"
@@ -266,7 +295,7 @@ SHA_KERNEL="$(sha256sum "$OUTDIR/vmlinuz" | awk '{print $1}')"
 SHA_INITRD="$(sha256sum "$OUTDIR/initrd.img" | awk '{print $1}')"
 SIZE_IMAGE="$(stat -c %s "$OUTDIR/devbox-rootfs.ext4.zst")"
 
-export SUITE PY_VERSION NODE_INSTALLED NPM_VERSION KERNEL_VERSION
+export SUITE PY_VERSION PIP_VERSION PY_SMOKE_RESULT NODE_INSTALLED NPM_VERSION KERNEL_VERSION
 export SHA_IMAGE SHA_KERNEL SHA_INITRD SIZE_IMAGE
 
 python3 - <<'PY'
@@ -281,8 +310,12 @@ manifest = {
     "kernelVersion": os.environ["KERNEL_VERSION"],
     "packages": {
         "python": os.environ["PY_VERSION"],
+        "pip": os.environ["PIP_VERSION"],
         "node": os.environ["NODE_INSTALLED"],
         "npm": os.environ["NPM_VERSION"],
+    },
+    "checks": {
+        "pythonSmoke": os.environ["PY_SMOKE_RESULT"],
     },
     "image": {
         "file": "devbox-rootfs.ext4.zst",

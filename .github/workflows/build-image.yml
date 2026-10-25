@@ -32,7 +32,9 @@ jobs:
           IMG_SIZE: 5G
 
       - name: Show output
-        run: ls -lh out
+        run: |
+          ls -lh out
+          cat out/manifest.json
 
       - name: Upload image
         uses: actions/upload-artifact@v4
