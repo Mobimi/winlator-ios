@@ -3,6 +3,8 @@ import SwiftUI
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
 
+    @AppStorage("devbox.autoOpenWeb") private var autoOpenWeb: Bool = true
+
     var body: some View {
         NavigationStack {
             List {
@@ -46,6 +48,23 @@ struct SetupView: View {
                     Text("Môi trường Linux")
                 } footer: {
                     Text("Image sẽ được tải ở lần chạy đầu tiên (M1). Hiện app chỉ chạy shell mô phỏng.")
+                }
+
+                Section {
+                    Toggle(isOn: $autoOpenWeb) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tự mở web preview")
+                            Text("Khi phát hiện server mới")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    LabeledContent("Cổng theo dõi", value: "3000 · 5173 · 8000 · 8501 · 7860")
+                } header: {
+                    Text("Web preview")
+                } footer: {
+                    Text("Chạy `npm run dev`, `uvicorn`, `streamlit`… app tự mở http://localhost:<cổng> trong khung web. Tắt mục này nếu muốn mở bằng Safari.")
                 }
 
                 Section("Đã có trong image (dự kiến)") {

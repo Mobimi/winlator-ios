@@ -13,7 +13,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 |---|---|
 | Chạy gì | Python 3.13 + pip, Node 22 + npm/npx, git, gcc, curl, nano… |
 | Chạy thế nào | QEMU (fork UTM) + Debian 13 ARM64, **không GPU, không Wine** |
-| Giao diện | Terminal (chính) + quản lý dự án + mở dev server trong Safari |
+| Giao diện | Terminal (chính) + quản lý dự án + **tự mở web preview** khi có dev server |
 | Máy | iPhone 12 Pro Max (A14, 6 GB) |
 | Build | GitHub Actions → `.ipa` → Sideloadly (không cần Mac) |
 | JIT | **Bắt buộc** cho QEMU → phải sideload + StikDebug |
@@ -46,10 +46,11 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 ```
 ┌───────────────────── iOS app (SwiftUI) ─────────────────────┐
 │ Dự án · Terminal · Thiết lập                                │
-│  ├─ SwiftTerm  ◄──── TCP localhost ────┐                    │
-│  ├─ PortForward → Safari (localhost)   │                    │
-│  └─ QEMU host (process riêng, JIT)     │                    │
-│        ├─ virtio-console (ttyAMA0) ────┘                    │
+│  ├─ SwiftTerm  ◄──── socketpair ──────┐                     │
+│  ├─ WKWebView  ◄──── HTTP localhost ──┤                     │
+│  │   (tự mở khi thấy dev server)      │                     │
+│  └─ QEMU host (process riêng, JIT)     │                     │
+│        ├─ virtio-console (ttyAMA0) ────┘                     │
 │        ├─ virtio-blk: Debian 13 ARM64 (qcow2)               │
 │        ├─ virtio-9p: /home/dev/projects ↔ app Documents     │
 │        └─ virtio-net (user-mode) + hostfwd 5173/3000/8000   │
@@ -58,6 +59,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 ┌──────────────────── Debian 13 ARM64 guest ──────────────────┐
 │ python3 · pip · venv · node · npm · npx · git · gcc · zsh    │
 │ /home/dev/projects/<slug>                                    │
+│ agent: /proc/net/tcp → /mnt/share/.ports (phát hiện server)  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,13 +79,25 @@ python app.py
 
 # Node
 npm install
-npm run dev          # mở http://localhost:5173 trong Safari
+npm run dev          # app tự mở http://localhost:5173 trong khung web
 npx create-vite@latest
 
 # Khác
 git clone …
 gcc main.c -o main
 ```
+
+---
+
+## Web preview tự động
+
+Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
+
+1. Guest có một agent nhỏ đọc `/proc/net/tcp` mỗi giây, thấy cổng mới đang LISTEN thì ghi vào `/mnt/share/.ports`.
+2. App đọc file đó, thử HTTP `127.0.0.1:<cổng>`; nếu trả lời được thì gọi QMP `hostfwd_add` để mở cổng ra loopback của iOS.
+3. Terminal hiện banner `Web · localhost:5173` và tự mở `WKWebView` (có nút reload / mở Safari). Tắt tự mở trong tab **Thiết lập** nếu không muốn.
+
+Áp dụng cho mọi thứ mở cổng HTTP: Vite, Next.js dev, `uvicorn`, Flask, `streamlit`, `gradio`, harness Python/Node… Ở bản UI hiện tại, preview đang dùng trang mô phỏng; WKWebView thật được nối ở M2.
 
 ---
 
@@ -107,10 +121,11 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 ```
 [x] Phân tích & chốt kiến trúc
 [x] App shell: dự án, terminal mô phỏng, kiểm tra JIT, thông tin thiết bị
+[x] Web preview: phát hiện cổng, banner, WKWebView, tự mở (UI + mô phỏng)
 [x] Pipeline build IPA tự động (GitHub Actions)
 [ ] Cài app lên iPhone 12 Pro Max        ← bước tiếp theo của bạn
 [ ] M1 — QEMU boot Debian, terminal thật (3–4 tuần)
-[ ] M2 — python/node/npm, chia sẻ file, port forward (3–4 tuần)
+[ ] M2 — python/node/npm, chia sẻ file, port forward + web thật (3–4 tuần)
 [ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
 [ ] M4 — tối ưu hiệu năng, chế độ nền, code-server (tuỳ chọn)
 ```

@@ -7,7 +7,10 @@ struct TerminalView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var shell = MockShell()
 
+    @AppStorage("devbox.autoOpenWeb") private var autoOpenWeb: Bool = true
+
     @State private var input = ""
+    @State private var preview: PreviewTarget?
     @FocusState private var inputFocused: Bool
 
     private let quickCommands = [
@@ -16,13 +19,14 @@ struct TerminalView: View {
         "node -v",
         "npm install express",
         "npm run dev",
-        "git status"
+        "uvicorn app:app"
     ]
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 console
+                serverBanner
                 quickBar
                 inputBar
             }
@@ -42,6 +46,18 @@ struct TerminalView: View {
                     Button("Tab") { input += "  " }
                     Spacer()
                     Button("Chạy") { submit() }
+                }
+            }
+            .sheet(item: $preview) { target in
+                WebPreviewView(target: target)
+            }
+            .onChange(of: shell.server) { _, newValue in
+                guard let server = newValue, autoOpenWeb else { return }
+                // Đợi log in xong rồi mới mở, tránh cắt ngang dòng đang chạy.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                    if preview == nil {
+                        preview = PreviewTarget(port: server.port, isMock: true)
+                    }
                 }
             }
             .onAppear {
@@ -74,6 +90,48 @@ struct TerminalView: View {
                     proxy.scrollTo(last, anchor: .bottom)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var serverBanner: some View {
+        if let server = shell.server {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 7, height: 7)
+
+                Text("Web · localhost:\(server.port)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.85))
+
+                Spacer()
+
+                Button {
+                    preview = PreviewTarget(port: server.port, isMock: true)
+                } label: {
+                    Text("Mở")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.green, in: Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    shell.dismissServer()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.green.opacity(0.12))
         }
     }
 

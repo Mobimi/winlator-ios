@@ -121,18 +121,27 @@ Sau đó sang tab **Dự án** → mở `hello-python` → gõ thử:
 python --version
 npm install express
 npm run dev
+uvicorn app:app
 help
 ```
 
 Đây là shell mô phỏng (chưa có Linux thật). Mục đích: kiểm tra UI, bàn phím, luồng thao tác.
 
+Sau `npm run dev` (hoặc `uvicorn app:app`), bạn sẽ thấy:
+
+1. Banner xanh **Web · localhost:5173** ngay trên thanh nhập lệnh.
+2. Khoảng 1 giây sau, khung web **tự mở** (hiện là trang mô phỏng — M2 sẽ là web thật).
+3. Muốn tắt tự mở: tab **Thiết lập** → **Web preview** → gạt công tắc.
+
+Đây chính là luồng sau này dùng cho dự án thật: chạy `npm run dev`/`uvicorn`/`streamlit` là giao diện web tự hiện, không phải copy cổng.
+
 ---
 
 ## Gửi mình gì
 
-1. Ảnh tab **Thiết lập** (thấy JIT + model).
+1. Ảnh tab **Thiết lập** (thấy JIT + model + mục Web preview).
 2. Ảnh **StikDebug** sau khi bật JIT.
-3. Ảnh terminal mô phỏng sau khi gõ `help`.
+3. Ảnh terminal mô phỏng sau khi gõ `help`, và ảnh khung web tự mở sau `npm run dev`.
 4. Kết quả Actions (xanh/đỏ; nếu đỏ thì copy log).
 5. Bạn muốn chạy **Python hay Node** trước, và package nào (`requests`, `express`, `create-vite`…).
 

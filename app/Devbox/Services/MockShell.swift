@@ -15,11 +15,17 @@ struct ShellLine: Identifiable {
     var role: LineRole
 }
 
+struct DetectedServer: Equatable, Identifiable {
+    let id = UUID()
+    let port: Int
+}
+
 /// Shell giả lập để hoàn thiện UI trước khi nối QEMU (M1).
 /// Mọi lệnh dưới đây chỉ in ra kết quả mẫu, không chạy gì thật.
 final class MockShell: ObservableObject {
     @Published private(set) var lines: [ShellLine] = []
     @Published private(set) var cwd: String = "~"
+    @Published private(set) var server: DetectedServer?
 
     private var project: Project?
 
@@ -31,6 +37,7 @@ final class MockShell: ObservableObject {
         self.project = project
         cwd = "~"
         lines = []
+        server = nil
 
         append("Devbox 0.1 — Linux aarch64 (mô phỏng)", .info)
         append("Đăng nhập: dev@iphone · shell: zsh", .info)
@@ -54,9 +61,12 @@ final class MockShell: ObservableObject {
                 Lệnh mẫu:
                   python --version      node -v
                   pip install <pkg>     npm install <pkg>
-                  npm run dev           git status
-                  ls                    pwd
-                  clear
+                  npm run dev           npx serve
+                  uvicorn app:app       streamlit run app.py
+                  git status            clear
+
+                Khi một server bắt đầu chạy, app tự mở web preview
+                (localhost:<port>). Tắt tự mở trong tab Thiết lập.
 
                 Đây là shell mô phỏng. Engine Linux thật sẽ nối ở mốc M1.
                 """,
@@ -85,9 +95,27 @@ final class MockShell: ObservableObject {
         case "python", "python3":
             if parts.count > 1, parts[1] == "--version" || parts[1] == "-V" {
                 append("Python 3.13.1", .output)
+            } else if parts.count > 1, parts[1].hasSuffix(".py") {
+                append(" * Serving Flask app 'app'", .output)
+                append(" * Debug mode: on", .output)
+                append(" * Running on http://127.0.0.1:8000", .success)
+                announce(port: 8000)
             } else {
                 append("Python 3.13.1 (main, Oct 2026) [Clang 18.1.8] on linux", .output)
             }
+
+        case "uvicorn":
+            append("INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)", .success)
+            announce(port: 8000)
+
+        case "streamlit":
+            append("  You can now view your Streamlit app in your browser.", .output)
+            append("  Local URL: http://localhost:8501", .success)
+            announce(port: 8501)
+
+        case "gradio":
+            append("Running on local URL:  http://127.0.0.1:7860", .success)
+            announce(port: 7860)
 
         case "pip", "pip3":
             if parts.count >= 3, parts[1] == "install" {
@@ -112,7 +140,11 @@ final class MockShell: ObservableObject {
             handleNpm(parts: parts)
 
         case "npx":
-            if parts.count > 1 {
+            if parts.count > 1, parts[1] == "serve" {
+                append("Serving!", .output)
+                append("Local:            http://localhost:3000", .success)
+                announce(port: 3000)
+            } else if parts.count > 1 {
                 append("Need to install the following packages: \(parts[1])", .output)
                 append("Ok to proceed? (y)", .output)
             } else {
@@ -159,7 +191,8 @@ final class MockShell: ObservableObject {
                 append("", .output)
                 append("  VITE v6.0.0  ready in 312 ms", .success)
                 append("  ➜  Local:   http://localhost:5173/", .output)
-                append("→ M2: mở địa chỉ này trong Safari của iPhone.", .info)
+                append("→ Đang mở web preview (M2 sẽ là web thật).", .info)
+                announce(port: 5173)
             } else {
                 append("> \(script) (mô phỏng) — xong.", .output)
             }
@@ -170,6 +203,14 @@ final class MockShell: ObservableObject {
         default:
             append("(mô phỏng) npm \(parts.dropFirst().joined(separator: " "))", .info)
         }
+    }
+
+    func dismissServer() {
+        server = nil
+    }
+
+    private func announce(port: Int) {
+        server = DetectedServer(port: port)
     }
 
     private func append(_ text: String, _ role: LineRole) {

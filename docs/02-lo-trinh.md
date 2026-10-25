@@ -51,7 +51,9 @@ Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Nativ
 | Image có python3 + pip + venv + node + npm + npx + git + gcc | `node -v`, `pip --version` chạy |
 | Chia sẻ file qua 9p | Kéo file từ Files.app vào `Projects/`, thấy trong guest |
 | Import/export dự án | Nút Xuất → file xuất hiện trong Files.app |
-| Port forward | `npm run dev` → mở `http://localhost:5173` trong Safari |
+| Guest agent phát hiện cổng | `/mnt/share/.ports` cập nhật trong ≤ 2 s khi server start/stop |
+| Port forward qua QMP | Cổng mới được `hostfwd_add` tự động, `curl 127.0.0.1:5173` từ app trả HTML |
+| Web preview | `npm run dev` → **tự mở WKWebView** thấy trang Vite, không cần copy địa chỉ |
 | Lưu dữ liệu qua reboot | Tắt/mở app, file vẫn còn |
 | Reset máy ảo | Xoá overlay, giữ `Projects/` |
 | Swap 512 MB | Không bị kill khi build vừa phải |
@@ -63,7 +65,11 @@ Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Nativ
 - npm install express             → OK
 - npx create-vite@latest demo    → OK (chậm nhưng xong)
 - cd demo && npm install && npm run dev
-  → Safari mở localhost:5173, thấy trang Vite
+  → khoảng 1–2 giây sau khi Vite báo "Local: 5173",
+    app tự mở khung web, thấy trang Vite (không thao tác gì thêm)
+- Thêm một dự án Python chạy `uvicorn app:app --port 8000`
+  → app tự mở localhost:8000, banner đổi cổng đúng
+- Tắt tự mở trong Thiết lập → `npm run dev` chỉ hiện banner, không tự mở
 - Tắt app, mở lại → project + node_modules còn nguyên
 ```
 
@@ -82,7 +88,7 @@ Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Nativ
 | Thông báo lỗi thân thiện | "Hết RAM", "Mất JIT", "Image lỗi" thay vì crash |
 | Nhập/xuất dự án | Zip 1 dự án ra Files.app và ngược lại |
 
-**Tiêu chí nghiệm thu M3:** một người chưa từng dùng Linux tạo được dự án Node, chạy `npm run dev`, mở Safari trong **dưới 5 phút**.
+**Tiêu chí nghiệm thu M3:** một người chưa từng dùng Linux tạo được dự án Node, chạy `npm run dev`, thấy web preview tự mở trong **dưới 5 phút**.
 
 ---
 
@@ -118,7 +124,8 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Chạy workflow **Build iOS IPA**, tải artifact.
 - [ ] Cài bằng Sideloadly, bật Developer Mode, bật JIT bằng StikDebug.
 - [ ] Mở app, chụp tab **Thiết lập** + thử terminal mô phỏng.
-- [ ] Gửi mình: ảnh 2 tab + tên game… à nhầm, **tên package/dự án** bạn muốn chạy đầu tiên (ví dụ `requests`, `express`, `create-vite`).
+- [ ] Trong terminal, gõ `npm run dev` → xem banner xanh và web preview mô phỏng có tự mở không.
+- [ ] Gửi mình: ảnh 2 tab + **tên package/dự án** bạn muốn chạy đầu tiên (ví dụ `requests`, `express`, `create-vite`).
 
 Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.
 
@@ -142,7 +149,7 @@ Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.
 
 - Cài IPA → bật JIT → tạo dự án → chạy Python và Node trong < 5 phút.
 - `pip install` (wheel arm64) và `npm install` hoạt động.
-- Dev server mở được trong Safari.
+- Dev server mở được trong app (và trong Safari khi cần).
 - Tắt/mở app không mất dữ liệu; reset máy ảo không mất `Projects/`.
 - Có log, có nút export, có thông báo lỗi rõ ràng.
 - Tài liệu: cài đặt, template, xử lý lỗi thường gặp.
