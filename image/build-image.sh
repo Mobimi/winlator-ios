@@ -134,7 +134,8 @@ EOF
 # bỏ marker để `pip install` chạy được đúng như trên PC.
 rm -f /usr/lib/python3*/EXTERNALLY-MANAGED
 
-python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+# pip của Debian không có RECORD → phải --ignore-installed mới nâng cấp được
+python3 -m pip install --no-cache-dir --ignore-installed --upgrade pip setuptools wheel
 
 # Kiểm tra Python chạy thật: tạo venv, tải wheel arm64 từ PyPI, import.
 # Kết quả ghi vào /etc/devbox-python-smoke để đưa vào manifest.
