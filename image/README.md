@@ -23,7 +23,7 @@ Không chạy được trên Windows trực tiếp — cần Linux/WSL2 hoặc A
 
 | File | Kích thước |
 |---|---|
-| `devbox-rootfs.ext4.zst` | 395 MB (giải nén: 1.87 GB) |
+| `devbox-rootfs.ext4.zst` | 423 MB (giải nén: 1.9 GB) |
 | `vmlinuz` | 36 MB — kernel `6.12.113+deb13-arm64` |
 | `initrd.img` | 36 MB |
 | Artifact `devbox-debian-image` | ~466 MB |
@@ -43,7 +43,10 @@ Nghĩa là pip tải wheel `manylinux aarch64` từ PyPI, cài và import đư�
 - Debian 13 minimal, glibc, systemd
 - `python3` + `venv` + `pip` + `python3-dev` (Debian 13 → Python 3.13)
 - `node` + `npm` + `npx` (Node 22.23.4, tarball chính thức, ghim sha256)
-- `git`, `curl`, `wget`, `nano`, `htop`, `build-essential`, `pkg-config`
+- `git`, `curl`, `wget`, `nano`, `vim-tiny`, `htop`, `build-essential`, `pkg-config`
+- `tmux`, `ripgrep`, `jq`, `tree`, `zip`, `psmisc`, `lsof`
+- `openssh-server` (cổng 22, user `dev` / mật khẩu `dev`, chỉ dùng qua forward 2222)
+- `devbox-killport <port>`: tắt tiến trình đang giữ cổng bằng `/proc/net/tcp`
 - User `dev`, mật khẩu `dev`, sudo không mật khẩu (máy một người dùng, không mở ra LAN)
 - Autologin trên `ttyAMA0` (console QEMU)
 - `/home/dev/projects` (dữ liệu dự án)
@@ -61,12 +64,21 @@ cat out/manifest.json
 Boot thử trên Linux bằng QEMU (không cần iPhone):
 
 ```bash
+zstd -d out/devbox-rootfs.ext4.zst -o devbox-rootfs.ext4
+python3 image/boot_test.py out   # cần qemu-system-arm, python3-pexpect, curl
+```
+
+`boot_test.py` tự boot, kiểm `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg`, sshd cổng 22, `devbox-killport`, mạng ra PyPI, 9p share, portwatch + hostfwd HTTP, rồi poweroff. Workflow **Build Debian image** chạy bài này trước khi publish, nên asset `img-v1` chỉ được cập nhật khi image boot được.
+
+Hoặc boot tay:
+
+```bash
 qemu-system-aarch64 \
   -M virt,highmem=on -cpu max -smp 4 -m 1792 \
   -kernel out/vmlinuz -initrd out/initrd.img \
   -append "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0" \
   -drive if=virtio,format=raw,file=devbox-rootfs.ext4 \
-  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+  -netdev user,id=n0 -device virtio-net-pci,netdev=n0,romfile= \
   -nographic
 ```
 

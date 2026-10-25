@@ -28,7 +28,7 @@
 | Khởi động QEMU | `dlopen` + `qemu_init`/`qemu_main_loop`/`qemu_cleanup` trên `Thread` riêng, `atexit` guard |
 | Console | QEMU `-serial chardev` → TCP `127.0.0.1:4444`; `GuestConsole` nối `NWConnection` |
 | Tắt máy an toàn | QMP `quit` qua `127.0.0.1:4445` |
-| Rootfs | Debian 13 ARM64, ext4 1.87 GB, zstd 394 MB, kernel 6.12.113 |
+| Rootfs | Debian 13 ARM64, ext4 1.9 GB, zstd 423 MB, kernel 6.12.113 |
 
 **Chờ test trên máy:** boot lần đầu, độ trễ console, hành vi khi vào nền.
 
@@ -112,9 +112,9 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Tải IPA ở run **Build iOS IPA** mới nhất (artifact `Devbox-unsigned-ipa`).
 - [ ] Cài bằng Sideloadly (Apple ID thường), bật Developer Mode trên máy.
 - [ ] Mở StikDebug → **Enable JIT** cho Devbox (app sẽ tự mở lại).
-- [ ] Tab **Thiết lập** → **Tải và cài image (~480 MB)**. Giữ app mở, cần ~3 GB trống.
-- [ ] Mở dự án → chờ boot (30–90 giây) → thấy `dev@devbox:~$`.
-- [ ] Gõ `python3 -V`, `node -v`, `npm -v` và gửi kết quả.
+- [ ] Tab **Thiết lập** → **Tải và cài image (~500 MB)**. Giữ app mở, cần ~3 GB trống.
+- [ ] Mở tab **Shell** → chờ boot (30–90 giây) → thấy `dev@devbox:~$`.
+- [ ] Gõ thử `gi` (gợi ý `git`), `cd /mnt/share/` (gợi ý file thật), `python3 -V`, `node -v`, `npm -v` và gửi kết quả.
 - [ ] Bấm Home 2 phút, quay lại, xem đồng hồ "Đã chạy" trong tab Thiết lập có tăng tiếp không.
 
 Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán**, và gửi file `qemu.log` + `diagnostics.txt` trong app Files (`Trên iPhone của tôi → Devbox → logs`) hoặc bấm **Chia sẻ file log**.
@@ -129,7 +129,7 @@ Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán**, và gử
 | TCG chậm hơn dự kiến | Trung bình | UX kém | Giảm vCPU, tắt service thừa, dùng Alpine cho boot nhanh |
 | OOM khi `npm install` lớn | Cao | Gián đoạn | Guest 1792 MB, tránh build Next.js, đóng app khác |
 | 9p quá chậm | Cao | Import chậm | Chỉ dùng 9p để copy, không chạy trực tiếp trên đó |
-| Image ~480 MB tải lỗi | Trung bình | Không cài được | `URLSession` tải lại + kiểm SHA256 từng file |
+| Image ~500 MB tải lỗi | Trung bình | Không cài được | `URLSession` tải lại + kiểm SHA256 từng file |
 | Nhiệt/pin | Cao | Không chơi lâu | Cảnh báo, giới hạn, tạm dừng khi nóng |
 | Bạn đổi ý lần nữa | 🙂 | — | UI tách khỏi engine, đổi backend không phải viết lại app |
 

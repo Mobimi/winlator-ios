@@ -101,7 +101,7 @@ Ghi chú kỹ thuật:
 Documents/Devbox/
 ├── images/
 │   └── debian13-arm64/
-│       ├── rootfs.ext4        # raw ext4 1.87 GB, ghi trực tiếp
+│       ├── rootfs.ext4        # raw ext4 1.9 GB, ghi trực tiếp
 │       ├── vmlinuz            # kernel 6.12.113
 │       ├── initrd.img
 │       └── manifest.json      # phiên bản + sha256
@@ -123,19 +123,19 @@ Quyết định quan trọng:
 
 | Thành phần | Thực tế |
 |---|---|
-| Base | Debian 13 (trixie) ARM64 minimal, glibc. ext4 **1.87 GB**, zstd **396 MB**. |
+| Base | Debian 13 (trixie) ARM64 minimal, glibc. ext4 **1.9 GB**, zstd **423 MB**. |
 | Kernel | `6.12.113+deb13-arm64` |
 | Python | **3.13.5**, pip **26.2.2**, kèm venv, numpy/pandas/requests |
 | Node | **22.23.4**, npm **10.9.9**, npx |
 | Build | `build-essential`, `pkg-config` |
-| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`, `ripgrep`, `iproute2`, `procps`, `ping` |
+| Khác | `git`, `curl`, `wget`, `nano`, `vim-tiny`, `htop`, `less`, `unzip`, `zip`, `ripgrep`, `tmux`, `openssh-server`, `psmisc`, `lsof`, `tree`, `jq`, `iproute2`, `procps`, `ping` |
 | Mạng | systemd-networkd cấu hình tĩnh `eth0 = 10.0.2.15/24`, gateway `10.0.2.2`, DNS `10.0.2.3` (slirp) |
 | Locale | `en_US.UTF-8` |
 | Phát hành | Release `img-v1`: `devbox-rootfs.ext4.zst`, `vmlinuz`, `initrd.img`, `manifest.json`, `SHA256SUMS` |
 
-App tải khoảng 480 MB (ba file), giải nén ra 1.87 GB. Cần khoảng 3 GB trống. Tải một lần, sau đó boot offline.
+App tải khoảng 500 MB (ba file), giải nén ra 1.9 GB. Cần khoảng 3 GB trống. Tải một lần, sau đó boot offline.
 
-Đã kiểm chứng bằng `Test image boot` (QEMU TCG trên runner ARM64): prompt sau **62 giây**, `python3 -V` → 3.13.5, `node -v` → v22.23.4, `npm -v` → 10.9.9, `mountpoint /mnt/share` OK, `ip addr` → 10.0.2.15, `urlopen('https://pypi.org/simple/')` → 200, `http.server 5173` được forward ra host, `poweroff` sạch.
+Đã kiểm chứng bằng `Test image boot` (QEMU TCG trên runner ARM64, chạy tự động trước bước publish): prompt sau **62.9 giây**, `python3 -V` → 3.13.5, `node -v` → v22.23.4, `npm -v` → 10.9.9, `tmux -V` → 3.5a, `rg --version` → 14.1.1, sshd nghe `:22`, `devbox-killport` OK, `mountpoint /mnt/share` OK, `ip addr` → 10.0.2.15, `urlopen('https://pypi.org/simple/')` → 200, `http.server 5173` được forward ra host, `poweroff` sạch.
 
 ---
 

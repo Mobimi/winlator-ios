@@ -9,7 +9,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 >
 > **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 7.19 MB (SHA256 `8a0c11d2…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd ~400 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
 >
-> **Image đã boot thật trong CI** (`Test image boot`): vào prompt sau **62 giây** bằng TCG, `python3`/`node`/`npm`/`git`/`gcc` chạy đúng, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
+> **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 
 ---
 
@@ -23,7 +23,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 | Máy | iPhone 12 Pro Max (A14, 6 GB) |
 | Build | GitHub Actions → `.ipa` → Sideloadly (không cần Mac) |
 | JIT | **Bắt buộc** cho QEMU → phải sideload + StikDebug |
-| Kích thước | IPA ~7 MB + image ~480 MB (tải một lần) |
+| Kích thước | IPA ~7 MB + image ~500 MB (tải một lần) |
 | So với Winlator | Dễ hơn rất nhiều: bỏ Wine, bỏ box64, bỏ DXVK, bỏ GPU |
 
 ---
@@ -159,7 +159,7 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] Phân tích & chốt kiến trúc
 [x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
 [x] Pipeline build IPA tự động (GitHub Actions) — IPA 6.99 MB có engine QEMU nhúng
-[x] Pipeline build image Debian 13 ARM64 — 394 MB nén, Python/Node/npm chạy thật
+[x] Pipeline build image Debian 13 ARM64 — 423 MB nén, Python/Node/npm chạy thật
 [x] Engine QEMU 10.0.12 (UTM fork) build cho iOS arm64, đóng gói framework, phát hành `engine-v1`
 [x] App tải image từ release `img-v1`, kiểm SHA256, giải nén zstd tại chỗ
 [x] Image boot thật trong CI: prompt sau 62 giây, python/node/npm/git/gcc OK, mạng ra PyPI OK

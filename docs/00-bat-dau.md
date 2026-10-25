@@ -123,14 +123,14 @@ Thử thật: bấm Home vài phút rồi quay lại — Devbox vẫn `Đang gi�
 
 ---
 
-## Bước 6 — Tải image Debian (~480 MB)
+## Bước 6 — Tải image Debian (~500 MB)
 
-1. Tab **Thiết lập** → mục **Môi trường Linux** → bấm **Tải và cài image (~480 MB)**.
+1. Tab **Thiết lập** → mục **Môi trường Linux** → bấm **Tải và cài image (~500 MB)**.
 2. Cần khoảng **3 GB trống**. Giữ app mở; app tự chống khoá màn hình trong lúc tải.
-3. App tải lần lượt `vmlinuz` (36 MB) → `initrd.img` (35 MB) → `rootfs.ext4.zst` (394 MB), kiểm SHA256 từng file rồi giải nén zstd ngay trên máy. Trạng thái chạy qua: `Đang tải…` → `Đang kiểm tra SHA256…` → `Đang giải nén…` → `Image sẵn sàng`.
+3. App tải lần lượt `vmlinuz` (36 MB) → `initrd.img` (35 MB) → `rootfs.ext4.zst` (423 MB), kiểm SHA256 từng file rồi giải nén zstd ngay trên máy. Trạng thái chạy qua: `Đang tải…` → `Đang kiểm tra SHA256…` → `Đang giải nén…` → `Image sẵn sàng`.
 4. Thời gian tuỳ mạng, thường 5–15 phút. Lỗi mạng thì bấm lại (file tải lại từ đầu, không resume).
 
-> Image này đã được boot thử tự động trong GitHub Actions (`Test image boot`): vào prompt sau 62 giây, `python3`/`node`/`npm`/`git`/`gcc` chạy đúng, có mạng, và `http://127.0.0.1:5173` từ ngoài vào được. Nếu máy bạn không lên được prompt thì lỗi ở phía app/JIT, không phải image.
+> Image này đã được boot thử tự động trong GitHub Actions (`Test image boot`, chạy trước khi publish): vào prompt sau 62.9 giây, `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` chạy đúng, sshd nghe cổng 22, có mạng, và `http://127.0.0.1:5173` từ ngoài vào được. Nếu máy bạn không lên được prompt thì lỗi ở phía app/JIT, không phải image.
 
 Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Python 3.13.5`, `Node 22.23.4 · npm 10.9.9`.
 
