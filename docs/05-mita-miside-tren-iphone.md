@@ -125,9 +125,13 @@ Mình vừa kiểm tra máy Windows đang dùng:
 - Tránh xa router 2.4 GHz và tránh tải file lớn cùng lúc.
 - Độ trễ mục tiêu: < 30 ms. Nếu > 50 ms → do Wi-Fi, không phải app.
 
-### Tay cầm
+### Tay cầm, chuột, bàn phím
 
-Kết nối tay cầm với **iPhone** qua Bluetooth (Settings → Bluetooth). Moonlight sẽ chuyển nó thành Xbox controller cho game trên PC.
+MiSide là game **FPS (WASD + nhìn bằng chuột)**. Chơi bằng cảm ứng sẽ rất cực.
+
+- Cách tốt nhất: kết nối **chuột Bluetooth + bàn phím Bluetooth** trực tiếp với iPhone (iOS hỗ trợ từ bản 13). Moonlight chuyển tiếp chuột/bàn phím sang PC như đang ngồi trước máy.
+- Tay cầm Bluetooth: dùng cho game có hỗ trợ gamepad. Với MiSide, tay cầm không thay được chuột.
+- Moonlight có chế độ biến màn hình cảm ứng thành trackpad, nhưng chỉ nên dùng để bấm menu.
 
 ---
 
