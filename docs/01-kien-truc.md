@@ -14,31 +14,31 @@
 ┌──────────────────────────── iOS app ─────────────────────────────┐
 │ SwiftUI                                                          │
 │  ├─ ProjectsView        danh sách môi trường                     │
-│  ├─ TerminalView        SwiftTerm + bàn phím + phím tắt          │
+│  ├─ TerminalView        terminal + bàn phím + phím tắt           │
 │  ├─ WebPreviewView      WKWebView + banner localhost:<port>      │
-│  ├─ SetupView           JIT, image, web preview, log              │
-│  └─ DevboxEngine (ObjC++)                                        │
-│       ├─ QEMU host process (CS_DEBUGGED → JIT)                   │
-│       ├─ console bridge (socketpair ↔ SwiftTerm)                 │
-│       ├─ port watcher (/mnt/share/.ports → hostfwd_add)          │
-│       └─ lifecycle (pause/resume, save on background)            │
+│  ├─ SetupView           JIT, image, engine, web preview, log     │
+│  └─ QEMUEngine          dlopen qemu-aarch64-softmmu.framework    │
+│       ├─ qemu_init / qemu_main_loop / qemu_cleanup trên Thread   │
+│       ├─ GuestConsole   TCP 127.0.0.1:4444 (serial console)      │
+│       ├─ QMPClient      TCP 127.0.0.1:4445 (quit)                │
+│       └─ PortWatcher    Documents/Devbox/share/.ports            │
 └──────────────────────────────────────────────────────────────────┘
-                                │
+                                 │
 ┌────────────────────── QEMU (aarch64-softmmu) ────────────────────┐
-│ -M virt -cpu max -smp 4 -m 2560                                  │
-│ virtio-blk  : rootfs.qcow2 (base read-only) + overlay.qcow2      │
-│ virtio-9p   : /mnt/share  ↔  app Documents/Devbox                │
-│ virtio-net  : user-mode NAT + hostfwd 3000/5173/8000/8080        │
-│ virtio-console (ttyAMA0) → TCP localhost hoặc socketpair fd      │
-│ -display none -nodefaults -no-reboot                             │
+│ -M virt -cpu max -smp 4 -m 1792 -accel tcg,thread=multi          │
+│ virtio-blk  : rootfs.ext4 (raw, ghi trực tiếp)                   │
+│ virtio-9p   : /mnt/share ↔ Documents/Devbox/share                │
+│ virtio-net  : user-mode NAT + hostfwd 3000/5173/8080             │
+│ pl011       : -serial chardev socket localhost:4444              │
+│ -display none -nodefaults -no-user-config                        │
 └──────────────────────────────────────────────────────────────────┘
-                                │
+                                 │
 ┌──────────────────────── Debian 13 ARM64 ─────────────────────────┐
-│ systemd → getty autologin (dev) → zsh                            │
+│ systemd → serial-getty autologin (dev) → bash                    │
 │ python3 3.13 + venv + pip                                        │
 │ node 22 + npm 10 + npx                                           │
 │ git, curl, wget, nano, build-essential, ripgrep                  │
-│ /home/dev/projects/<slug>   (ext4, nhanh)                        │
+│ /home/dev/projects/<slug>   (ext4)                               │
 │ /mnt/share                  (9p, để import/export)               │
 │ portwatch.sh: /proc/net/tcp → /mnt/share/.ports mỗi 1 giây       │
 └──────────────────────────────────────────────────────────────────┘
@@ -50,34 +50,40 @@ Terminal chỉ cần một luồng byte. Dùng `virtio-console` là đủ — nh
 
 ---
 
-## 3. QEMU: cấu hình mục tiêu
+## 3. QEMU: cấu hình thực tế
+
+App `dlopen` framework `Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu`, lấy ba symbol `qemu_init`, `qemu_main_loop`, `qemu_cleanup` rồi chạy trên một `Thread` riêng. iOS không cho spawn process, nên đây là cách duy nhất để nhúng QEMU mà không cần app extension (app extension làm SideStore vướng prefix).
 
 ```bash
-qemu-system-aarch64 \
-  -M virt,highmem=on -cpu max -smp 4 -m 2560 \
-  -rtc base=utc,clock=host \
-  -kernel /…/vmlinuz -initrd /…/initrd.img \
-  -append "console=ttyAMA0 root=/dev/vda2 rw quiet loglevel=3" \
-  -drive if=virtio,format=qcow2,file=rootfs-overlay.qcow2 \
-  -virtfs local,path=<sandbox>/Documents/Devbox,mount_tag=share,security_model=none \
-  -netdev user,id=n0,hostfwd=tcp:127.0.0.1:5173-:5173,hostfwd=tcp:127.0.0.1:3000-:3000 \
-  -device virtio-net-pci,netdev=n0 \
-  -chardev socket,id=con,fd=3 -device virtio-serial-pci -device virtconsole,chardev=con \
-  -display none -nodefaults -no-reboot
+-M virt,highmem=on -cpu max -smp 4 -m 1792 \
+-accel tcg,thread=multi,tb-size=256 -rtc base=utc,clock=host \
+-kernel <image>/vmlinuz -initrd <image>/initrd.img \
+-append "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0" \
+-drive if=virtio,format=raw,cache=writeback,file=<image>/rootfs.ext4 \
+-virtfs local,path=<Documents>/Devbox/share,mount_tag=share,security_model=none,multidevs=remap \
+-netdev user,id=n0,hostfwd=tcp:127.0.0.1:8080-:8080,hostfwd=tcp:127.0.0.1:3000-:3000,hostfwd=tcp:127.0.0.1:5173-:5173 \
+-device virtio-net-pci,netdev=n0 \
+-object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 \
+-chardev socket,id=con,host=127.0.0.1,port=4444,server=on,wait=off -serial chardev:con \
+-qmp tcp:127.0.0.1:4445,server=on,wait=off \
+-display none -nodefaults -no-user-config -name devbox
 ```
 
 Ghi chú kỹ thuật:
 
 | Vấn đề | Cách làm |
 |---|---|
-| Không có `/dev/ptmx` ổn định trên iOS | Dùng **socketpair** truyền fd từ app sang QEMU (`-chardev socket,fd=`), không dùng TCP. Fallback: TCP `127.0.0.1`. |
-| Resize terminal | Gửi lệnh `stty rows R cols C` qua một file trong `/mnt/share/.tty`, guest có timer 200 ms đọc và áp dụng. Đơn giản, không cần agent. |
-| Đăng nhập | `getty --autologin dev` trên `ttyAMA0`. Không mật khẩu (thiết bị một người dùng). |
-| Tắt máy an toàn | App gửi `poweroff`; chờ QEMU exit; nếu quá 5 s thì `quit` qua QMP. |
-| Treo / crash | QMP `stop` + đóng file; lần sau boot lại từ overlay. qcow2 chịu được crash nhưng nên `sync` định kỳ. |
-| Nhiều dự án | Mỗi dự án là một thư mục; **không** cần nhiều VM. Chỉ 1 VM dùng chung, tiết kiệm RAM. |
-| Port forward thêm | QMP `human-monitor-command: hostfwd_add tcp:127.0.0.1:PORT-:PORT` — không cần restart. |
-| Cập nhật image | Base image mới + giữ overlay cũ; nếu schema đổi thì migrate `/home`. |
+| Không spawn được process | Nhúng QEMU dưới dạng `.framework`, gọi trực tiếp `qemu_init`/`qemu_main_loop`/`qemu_cleanup`. `atexit` guard gọi `pthread_exit` nếu QEMU gọi `exit()`, tránh chết cả app. |
+| Console | QEMU `-serial chardev` mở TCP `127.0.0.1:4444`; app nối bằng `NWConnection` và giữ kết nối suốt đời engine (ngắt sẽ làm getty nhận hangup). |
+| Tắt máy an toàn | App gửi `quit` qua QMP `127.0.0.1:4445`. `qemu_main_loop` trả về → `qemu_cleanup` → state `.stopped`. |
+| Boot lại | QEMU không reentrant: mỗi tiến trình chỉ boot một lần. Dừng rồi muốn chạy tiếp thì thoát hẳn app và mở lại. |
+| JIT | QEMU TCG cần bộ nhớ thực thi. App đọc `CS_DEBUGGED`; chưa bật JIT thì TCG abort ngay, watchdog 40 giây báo lỗi kèm log. |
+| Resize terminal | Không hỗ trợ ở M1; chữ tự xuống dòng theo bề rộng màn hình. |
+| Đăng nhập | `serial-getty@ttyAMA0` với `--autologin dev`. Không mật khẩu. |
+| 9p | Chỉ dùng cho `share/.ports` và trao đổi file; dự án nằm trên ext4 trong image. |
+| Port forward | Cố định 3000/5173/8080 lúc boot (bind lỗi sẽ làm QEMU thoát, nên giữ ít cổng). Dev server phải nghe đúng một trong ba cổng này. |
+| Đóng gói | CI build QEMU cho iOS, đổi mỗi `.dylib` thành `.framework`, sửa `install_name` sang `@rpath/<name>.framework/<name>`, phát hành zip ở release `engine-v1`; workflow IPA tải zip và nhúng vào `Payload/Devbox.app/Frameworks`. |
+| Kích thước | `qemu-aarch64-softmmu` ~27 MB + glib/gio/pixman/slirp/zstd ~5 MB. IPA ~7 MB. |
 
 ---
 
@@ -86,56 +92,57 @@ Ghi chú kỹ thuật:
 ```
 Documents/Devbox/
 ├── images/
-│   ├── debian13-arm64.qcow2       # base, chỉ đọc, ~1.4 GB
-│   └── debian13-arm64.manifest    # version + sha256
-├── vm/
-│   └── overlay.qcow2              # copy-on-write, chứa thay đổi + /home
-├── Projects/                      # mount qua 9p tại /mnt/share
-│   ├── hello-python/
-│   └── web-app/
-└── logs/
-    └── qemu.log
+│   └── debian13-arm64/
+│       ├── rootfs.ext4        # raw ext4 1.87 GB, ghi trực tiếp
+│       ├── vmlinuz            # kernel 6.12.113
+│       ├── initrd.img
+│       └── manifest.json      # phiên bản + sha256
+├── share/                     # 9p, mount tại /mnt/share
+│   ├── .ports                 # portwatch.sh ghi cổng đang LISTEN
+│   └── ...                    # file trao đổi với guest
+└── Projects/                  # thư mục dự án phía app (không auto-mount)
 ```
 
 Quyết định quan trọng:
 
-- **Dự án nằm trên ext4 trong overlay, không nằm trên 9p.** 9p rất chậm với `node_modules` (hàng chục nghìn file nhỏ). 9p chỉ dùng làm cửa import/export.
-- **Base image read-only + overlay**: cập nhật image không mất dữ liệu; "Reset máy ảo" chỉ xoá overlay, giữ `Projects/`.
-- **Export**: nút "Xuất dự án" copy từ guest ra `Projects/` qua 9p rồi hiện trong Files.app.
+- **Dự án nằm trên ext4 trong image**, không nằm trên 9p. 9p rất chậm với `node_modules` (hàng chục nghìn file nhỏ). 9p chỉ dùng làm cửa import/export và để guest báo cổng.
+- **Image ghi trực tiếp**: chưa có overlay qcow2 ở M1. Sửa gì trong guest thì nằm luôn trong `rootfs.ext4`; cài lại image là reset.
+- **Image tải từ GitHub Release** `img-v1`, kiểm tra SHA256 từng file rồi giải nén zstd bằng `libzstd` nhúng trong app.
 
 ---
 
 ## 5. Guest image
 
-| Thành phần | Ghi chú |
+| Thành phần | Thực tế |
 |---|---|
-| Base | Debian 13 (trixie) ARM64, minimal, **glibc** (không chọn Alpine vì musl làm hỏng nhiều wheel/native module). Build thật: 1.73 GB ext4 → 363 MB zstd. |
-| Kernel | `linux-image-arm64` của Debian (**6.12.113** khi build) |
-| Python | `python3` + `python3-venv` + `python3-pip` + `python3-dev` (build thật: **3.13.5**) |
-| Node | Node 22.23.4 từ tarball chính thức nodejs.org (ghim sha256); kèm `npm`, `npx` |
+| Base | Debian 13 (trixie) ARM64 minimal, glibc. ext4 **1.87 GB**, zstd **394 MB**. |
+| Kernel | `6.12.113+deb13-arm64` |
+| Python | **3.13.5**, pip **26.2.2**, kèm venv, numpy/pandas/requests |
+| Node | **22.23.4**, npm **10.9.9**, npx |
 | Build | `build-essential`, `pkg-config` |
-| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`; thêm `cmake`, `libssl-dev`, `libffi-dev`, `libxml2-dev`, `libpq-dev`… để build extension Python từ source |
-| Locale | `en_US.UTF-8` (tránh lỗi pip/npm với locale C) |
+| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`, `ripgrep` |
+| Locale | `en_US.UTF-8` |
+| Phát hành | Release `img-v1`: `devbox-rootfs.ext4.zst`, `vmlinuz`, `initrd.img`, `manifest.json`, `SHA256SUMS` |
 
-Kích thước mục tiêu: **≤ 1.6 GB** chưa nén, **≤ 600 MB** sau zstd. Tải lần đầu, có resume + sha256.
+App tải khoảng 480 MB (ba file), giải nén ra 1.87 GB. Cần khoảng 3 GB trống. Tải một lần, sau đó boot offline.
 
 ---
 
 ## 6. Hiệu năng dự kiến trên iPhone 12 Pro Max
 
-Ước lượng (TCG ARM64→ARM64, 4 vCPU, 2.5 GB RAM):
+Ước lượng (TCG ARM64→ARM64, 4 vCPU, 1792 MB RAM):
 
 | Tác vụ | Thời gian |
 |---|---|
-| Boot đến prompt | 6–12 s |
-| `python3 -c "print(1)"` | 0.1–0.4 s |
-| `node -v` | 0.6–1.2 s |
-| `npm install express` | 15–40 s |
-| `npm run dev` (Vite) | 3–8 s |
-| `pip install numpy` (wheel arm64) | 20–50 s |
-| `gcc hello.c` | 1–3 s |
-| Build Vite nhỏ | 30–90 s |
-| Build Next.js | 3–8 phút, dễ OOM |
+| Boot đến prompt | 30–90 giây (TCG, lần đầu chậm nhất) |
+| `python3 -c "print(1)"` | 0.3–1 s |
+| `node -v` | 1–2.5 s |
+| `npm install express` | 30–80 s |
+| `npm run dev` (Vite) | 6–15 s |
+| `pip install numpy` (wheel arm64) | 40–90 s |
+| `gcc hello.c` | 2–6 s |
+| Build Vite nhỏ | 1–3 phút |
+| Build Next.js | 5–15 phút, dễ OOM |
 
 Nghẽn thật: **RAM** và **nhiệt**, không phải CPU.
 
@@ -147,24 +154,21 @@ Mục tiêu: chạy `npm run dev` / `uvicorn` / `streamlit` → app **tự mở 
 
 Luồng hoạt động:
 
-1. **Guest agent** (`portwatch.sh`, chạy như systemd service): mỗi 1 giây đọc `/proc/net/tcp` + `/proc/net/tcp6`, lọc cổng đang `LISTEN` từ 1024 trở lên (bỏ 631/5353), ghi ra `/mnt/share/.ports` — mỗi dòng một số cổng.
-2. **App** (`PortWatcher`): đọc file 2 giây/lần (9p đủ nhanh cho file vài dòng). Cổng mới → thử `GET http://127.0.0.1:PORT/` với timeout ~1.5 s.
-3. Nếu có phản hồi HTTP (kể cả 3xx/4xx), app gọi QMP `human-monitor-command: hostfwd_add tcp:127.0.0.1:PORT-:PORT` rồi mở `WebPreviewView` (WKWebView).
-4. Banner `Web · localhost:PORT` nằm ngay trên thanh nhập lệnh khi server còn sống: bấm **Mở** để mở lại, **✕** để ẩn.
+1. **Guest** (`portwatch.sh`, systemd service): mỗi 1 giây đọc `/proc/net/tcp` + `/proc/net/tcp6`, lọc cổng `LISTEN` từ 1024 trở lên (bỏ 631/5353), ghi ra `/mnt/share/.ports` — mỗi dòng một số cổng.
+2. **App** (`PortWatcher`): đọc `Documents/Devbox/share/.ports` mỗi 1.5 giây. Cổng mới → thử `GET http://127.0.0.1:PORT/` với timeout 2 giây.
+3. Nếu có phản hồi HTTP, app mở `WebPreviewView` (WKWebView) một lần cho cổng đó. Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại.
+4. QEMU đã forward sẵn 3000/5173/8080 từ lúc boot, nên không cần QMP `hostfwd_add`.
 
 | Chi tiết | Quyết định |
 |---|---|
-| Phát hiện cổng | Guest tự báo qua `.ports`; app **không** đoán theo tên lệnh, nên Vite, Next, FastAPI, Flask, Gradio… đều dùng được. |
-| hostfwd | `hostfwd_add` chỉ thêm được, không xoá gọn → app giữ set cổng đã map, chỉ thêm cổng mới. |
-| HTTP probe | `URLSession` + `waitsForConnectivity = false`. Server không phải HTTP (raw TCP, database) → bỏ qua, không mở web. |
+| Phát hiện cổng | Guest tự báo qua `.ports`; app không đoán theo tên lệnh, nên Vite, Next, FastAPI, Flask, Gradio đều dùng được miễn là nghe cổng 3000/5173/8080. |
+| HTTP probe | `URLSession` + timeout 2 giây; server không phải HTTP (database, raw TCP) thì bỏ qua, không mở web. |
 | ATS | `Info.plist` mở `NSAppTransportSecurity` cho HTTP localhost (app sideload nội bộ, không lên App Store). |
-| Tắt tự mở | `@AppStorage("devbox.autoOpenWeb")`, mặc định **bật**; công tắc trong tab Thiết lập sẽ thêm ở M2. |
+| Cổng khác | Đổi cổng dev server về 3000/5173/8080. Muốn thêm cổng phải build lại engine với `hostfwd` mới (bind lỗi lúc boot sẽ làm QEMU thoát). |
 | Safari | Nút trên thanh công cụ mở đúng địa chỉ bằng Safari thật (khi cần cookie, extension, DevTools). |
-| Giới hạn | Một preview tại một thời điểm; nhiều server thì banner hiện server mới nhất. Khi app vào nền và đang giữ nền, server guest + hostfwd vẫn sống; preview trong app tạm ẩn, quay lại là mở tiếp. |
+| Giới hạn | Một preview tại một thời điểm. Khi app vào nền và đang giữ nền, server guest vẫn sống; quay lại là mở tiếp. |
 
 `127.0.0.1` trong app iOS là loopback của **chính thiết bị**, và QEMU user-net bind hostfwd vào đó — WKWebView truy cập được mà không mở cổng ra LAN.
-
-> `WebPreviewView` là WKWebView thật, nhưng **chưa dùng được trước M2**: chưa có QEMU/portwatcher nên không có cổng nào để mở. Không có trang giả hay banner giả.
 
 ### 7.1 Giữ app chạy khi ra nền (đã có trong app)
 
@@ -197,14 +201,16 @@ Giới hạn thật:
 | Giới hạn | Xử lý |
 |---|---|
 | iOS suspend app sau ~30 s | Đã xử lý bằng `BackgroundKeeper`: `UIBackgroundModes=audio` + audio im lặng (−100 dBFS) + `beginBackgroundTask` dự phòng. Chỉ mất khi Force Quit hoặc thiếu RAM/nhiệt. |
-| App bị kill khi thiếu RAM | Giới hạn 2.5 GB, giải phóng cache page của QEMU, cảnh báo khi guest > 85%. |
-| Không có swap thật | Tạo swapfile 512 MB trong overlay (chậm nhưng tránh OOM). |
-| Keyboard tiếng Việt | Terminal dùng `UITextInput` của SwiftTerm; cần test Telex/VNI. Fallback: dán (paste). |
-| Copy/paste | OSC 52 (guest → app) và paste trực tiếp; thêm file `/mnt/share/.clipboard` nếu OSC không ổn. |
+| App bị kill khi thiếu RAM | Guest cấu hình 1792 MB; RAM còn lại cho iOS. Guest dùng quá nhiều (build Next.js) thì tiến trình trong guest bị OOM-kill trước, app vẫn sống. |
+| Không có swap thật | Không bật swap ở M1. Guest 1792 MB là mức an toàn cho iPhone 12 Pro Max (6 GB). |
+| Bàn phím tiếng Việt | Ô nhập là `TextField` SwiftUI, dùng bàn phím hệ thống nên Telex/VNI hoạt động như mọi app khác; gõ xong nhấn Gửi. |
+| Copy/paste | Chọn text trong console (`.textSelection(.enabled)`) và dán vào ô nhập bằng clipboard hệ thống. Chưa có OSC 52. |
+| Terminal full-screen (vim, htop, less) | Chưa hỗ trợ: console là parser dòng, không phải terminal grid. `vim`/`htop` sẽ hiển thị lộn xộn. Dùng lệnh không tương tác. |
+| Resize / SIGWINCH | Không gửi; chữ tự xuống dòng theo bề rộng màn hình. |
 | Mạng | QEMU user-mode NAT: guest ra Internet bình thường; máy ngoài **không** vào được guest. Đủ an toàn. |
 | Docker | Không. Cần namespace + overlayfs + kernel features; có thể thử `podman` nhưng không hứa. |
 | App GUI (X11) | Không ở bản 1.0. Có thể thêm sau bằng Xvfb + VNC → WKWebView, nhưng không ưu tiên. |
-| code-server (VS Code) | Khả thi về lý thuyết (Node server + Safari). Thử ở M4, không hứa. |
+| code-server (VS Code) | Khả thi về lý thuyết (Node server + Safari). Chưa thử. |
 
 ---
 

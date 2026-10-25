@@ -6,9 +6,9 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 
 | Giai đoạn | CLI |
 |---|---|
-| **Hiện tại (M0)** | **Không.** Console chỉ chạy lệnh chẩn đoán thật (`jit`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo "chưa nối engine". Không có kết quả giả. |
-| **Sau M1** | **Có.** Guest là Debian 13 ARM64 thật, nên `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. |
-| **Sau M2** | Có + chia sẻ file + dev server tự mở trong app. |
+| **Hiện tại (25/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Chưa test trên máy thật tại thời điểm viết. |
+| **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
+| **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn. Dùng lệnh không tương tác. |
 
 CLI là phần **dễ** của kiến trúc này: QEMU lo giả lập CPU, CLI chỉ cần stdin/stdout và syscall. Không cần GPU. Phần khó là boot máy ảo và nối terminal — không phải chạy lệnh.
 
@@ -94,14 +94,14 @@ jupyter lab --no-browser --ip=0.0.0.0 --port 8888
 - `git clone` / `commit` / `push` (cần mạng)
 - `python3`, `venv`, `pip install` các gói **có wheel arm64** (requests, flask, fastapi, pydantic, pillow…)
 - `node`, `npm install` dự án vừa, `npx`, chạy script Node
-- `uvicorn` / `flask run` / `npm run dev` → web preview trong app (M2)
+- `uvicorn` / `flask run` / `npm run dev` → web preview tự mở trong app (cổng 3000/5173/8080)
 - `gcc` biên dịch C nhỏ, `make` dự án vừa
 - `curl` gọi API, `sqlite3` (qua Python, hoặc `apt install sqlite3`)
 - `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (`apt install` được)
 
 ### Chạy được nhưng chậm
 
-| Việc | Thực tế trên A14 (ước tính, sẽ đo ở M1) |
+| Việc | Thực tế trên A14 (ước tính, chưa đo trên máy) |
 |---|---|
 | `npm install` dự án Vite/Express | 1–3 phút |
 | `npm install` Next.js / Angular | 5–15 phút, dễ OOM nếu ít RAM |
@@ -126,14 +126,14 @@ Nguyên nhân: iOS **không cho virtualization phần cứng**, nên QEMU phải
 | Thứ | Hiện tại | Ghi chú |
 |---|---|---|
 | Đĩa guest | 1.73 GB đã dùng / 5 GB | còn ~3.2 GB; có thể tăng image lên 16–32 GB |
-| RAM guest | 2.5 GB | iOS chỉ cho app ~3–3.5 GB; thêm zram 1 GB ở M2 |
+| RAM guest | 1792 MB | iOS chỉ cho app ~3–3.5 GB; chưa bật zram/swap |
 | CPU | 4 vCPU (TCG đa luồng) | A14 |
 | Pin/nhiệt | — | build liên tục sẽ throttle sau 15–20 phút |
 | Nền | giữ nền bằng audio im lặng | rời app vẫn chạy; Force Quit thì tắt; tốn pin |
 
-## Bài test nghiệm thu (sẽ chạy ở M1/M2)
+## Bài test nghiệm thu
 
-Copy nguyên khối này vào terminal của app; **pass** = mọi lệnh in kết quả thật, không có dòng "chưa nối engine":
+Copy nguyên khối này vào terminal của app; **pass** = mọi lệnh in kết quả thật:
 
 ```bash
 uname -a                  # Linux devbox 6.12.113+deb13-arm64 ... aarch64 GNU/Linux
@@ -168,7 +168,7 @@ Nếu cần "toàn diện" hơn nữa:
 |---|---|
 | Editor/IDE | M4: chạy `code-server` trong guest → VS Code mở trong WKWebView của app, không cần GUI |
 | SSH vào server thật | `apt install openssh-client` |
-| Nhiều dự án lớn cùng lúc | tăng image + zram; vẫn bị giới hạn 2.5 GB RAM |
+| Nhiều dự án lớn cùng lúc | tăng image; RAM guest cố định 1792 MB |
 | GUI app | ngoài phạm vi (cần virtio-gpu + display stack) |
 
 ## Bạn cần chốt

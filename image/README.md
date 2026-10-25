@@ -1,6 +1,6 @@
 # Image Debian cho Devbox
 
-Script `build-image.sh` tạo root filesystem Debian 13 (trixie) ARM64 để QEMU boot ở M1.
+Script `build-image.sh` tạo root filesystem Debian 13 (trixie) ARM64 để QEMU boot. Image đã build và phát hành ở release `img-v1`.
 
 ## Chạy ở đâu
 
@@ -62,12 +62,12 @@ Boot thử trên Linux bằng QEMU (không cần iPhone):
 
 ```bash
 qemu-system-aarch64 \
-  -M virt -cpu max -smp 4 -m 2560 \
+  -M virt,highmem=on -cpu max -smp 4 -m 1792 \
   -kernel out/vmlinuz -initrd out/initrd.img \
-  -append "console=ttyAMA0 root=/dev/vda rw" \
+  -append "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0" \
   -drive if=virtio,format=raw,file=devbox-rootfs.ext4 \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   -nographic
 ```
 
-Nếu boot được tới `dev@devbox:~/projects$` thì image đúng — phần còn lại là nhúng QEMU vào app (M1).
+Nếu boot được tới `dev@devbox:~$` thì image đúng. App dùng đúng bộ tham số này, thêm `-virtfs`, `hostfwd` và chardev TCP.

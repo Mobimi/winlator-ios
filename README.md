@@ -5,9 +5,9 @@
 
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
-> **Trạng thái thật (đọc trước khi cài):** bản app hiện tại **chưa có engine Linux**. Nó không giả lập `python`/`npm` nữa; terminal chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Muốn có Linux thật phải xong M1 (nhúng QEMU + image Debian).
+> **Trạng thái thật (2026-10-25):** engine QEMU đã build cho iOS và nhúng trong IPA, image Debian 13 đã phát hành, app đã có luồng tải image → boot → terminal. **Chưa test trên máy thật** — bước tiếp theo là cài IPA và chạy thử.
 >
-> **Build đã chạy thật (2026-10-25):** workflow **Build iOS IPA** xanh → `Devbox-unsigned.ipa` (arm64, bundle `app.devbox.dev`, 201 947 bytes, `UIBackgroundModes = [audio]` đã kiểm tra trong CI). Workflow **Build Debian image** xanh → rootfs ext4 1.87 GB (zstd 395 MB), kernel 6.12.113, Python 3.13.5, pip 26.2.2, Node 22.23.4. Smoke test trong image: `requests 2.34.2, numpy 2.5.4, pandas 3.1.0` cài từ PyPI và import OK.
+> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 6.99 MB (SHA256 `2189ee37…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 1.87 GB (zstd 394 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4.
 
 ---
 
@@ -21,7 +21,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 | Máy | iPhone 12 Pro Max (A14, 6 GB) |
 | Build | GitHub Actions → `.ipa` → Sideloadly (không cần Mac) |
 | JIT | **Bắt buộc** cho QEMU → phải sideload + StikDebug |
-| Thời gian tới bản dùng được | **8–11 tuần** (1 người) |
+| Kích thước | IPA ~7 MB + image ~480 MB (tải một lần) |
 | So với Winlator | Dễ hơn rất nhiều: bỏ Wine, bỏ box64, bỏ DXVK, bỏ GPU |
 
 ---
@@ -49,21 +49,21 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 
 ```
 ┌───────────────────── iOS app (SwiftUI) ─────────────────────┐
-│ Dự án · Terminal · Thiết lập                                │
-│  ├─ SwiftTerm  ◄──── socketpair ──────┐                     │
-│  ├─ WKWebView  ◄──── HTTP localhost ──┤                     │
+│ Dự án · Terminal · Thiết lập · Web preview                  │
+│  ├─ TerminalView ◄──── TCP 4444 ──────┐                     │
+│  ├─ WKWebView  ◄──── HTTP 127.0.0.1 ──┤                     │
 │  │   (tự mở khi thấy dev server)      │                     │
-│  └─ QEMU host (process riêng, JIT)     │                     │
+│  └─ QEMUEngine: dlopen + Thread        │                     │
 │        ├─ serial PL011 (ttyAMA0) ──────┘                     │
 │        ├─ virtio-blk: Debian 13 ARM64 (ext4 raw)            │
-│        ├─ virtio-9p: /mnt/share ↔ app Documents             │
-│        └─ virtio-net (user-mode) + hostfwd 5173/3000/8000   │
+│        ├─ virtio-9p: /mnt/share ↔ app Documents/Devbox/share│
+│        └─ virtio-net (user-mode) + hostfwd 3000/5173/8080   │
 └──────────────────────────────────────────────────────────────┘
                               │
 ┌──────────────────── Debian 13 ARM64 guest ──────────────────┐
 │ python3 · pip · venv · node · npm · npx · git · gcc · bash   │
 │ /home/dev/projects/<slug>                                    │
-│ agent: /proc/net/tcp → /mnt/share/.ports (phát hiện server)  │
+│ portwatch: /proc/net/tcp → /mnt/share/.ports (mỗi 1 giây)    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,7 +73,7 @@ Chi tiết: [`docs/01-kien-truc.md`](docs/01-kien-truc.md)
 
 ---
 
-## Bạn sẽ làm gì với nó (khi xong M2)
+## Bạn sẽ làm gì với nó
 
 ```bash
 # Python
@@ -97,11 +97,11 @@ gcc main.c -o main
 
 Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
 
-1. Guest có một agent nhỏ đọc `/proc/net/tcp` mỗi giây, thấy cổng mới đang LISTEN thì ghi vào `/mnt/share/.ports`.
-2. App đọc file đó, thử HTTP `127.0.0.1:<cổng>`; nếu trả lời được thì gọi QMP `hostfwd_add` để mở cổng ra loopback của iOS.
-3. Terminal hiện banner `Web · localhost:5173` và tự mở `WKWebView` (có nút reload / mở Safari). Tuỳ chọn tắt tự mở sẽ có ở tab **Thiết lập** khi làm M2.
+1. Guest có `portwatch.sh` đọc `/proc/net/tcp` mỗi giây, thấy cổng ≥1024 đang LISTEN thì ghi vào `/mnt/share/.ports`.
+2. App đọc `Documents/Devbox/share/.ports` mỗi 1.5 giây, thử HTTP `127.0.0.1:<cổng>`. QEMU đã forward sẵn 3000/5173/8080 từ lúc boot nên không cần mở cổng động.
+3. Cổng trả lời HTTP → app tự mở `WKWebView`. Nút **Web** trên terminal liệt kê mọi cổng đang mở để mở lại.
 
-Áp dụng cho mọi thứ mở cổng HTTP: Vite, Next.js dev, `uvicorn`, Flask, `streamlit`, `gradio`, harness Python/Node… **Chưa hoạt động ở bản hiện tại**: WKWebView đã có code nhưng chưa có engine/port forwarding (M2). Không có banner giả.
+Áp dụng cho mọi thứ mở cổng HTTP trong ba cổng trên: Vite, Next.js dev, `python3 -m http.server`, Flask, `uvicorn --port 3000`, `streamlit --server.port 8080`… Cổng khác phải đổi về 3000/5173/8080.
 
 ---
 
@@ -110,10 +110,12 @@ Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
 | Giới hạn | Hệ quả |
 |---|---|
 | App bị iOS treo ~30 giây sau khi rời màn hình | Đã có **giữ nền** (audio im lặng): chuyển sang app khác thì web server vẫn chạy; vuốt app khỏi đa nhiệm thì tắt; tốn pin |
-| Guest chỉ có ~2.5 GB RAM | Build lớn (Next.js, webpack nhiều entry) dễ OOM |
-| QEMU TCG trên A14 | CPU ≈ laptop 2015; chạy được, build chậm |
+| Guest có 1792 MB RAM | Build lớn (Next.js, webpack nhiều entry) dễ OOM |
+| QEMU TCG trên A14 | CPU ≈ laptop 2010–2015; chạy được, boot 30–90 giây, build chậm |
+| Console không phải terminal grid | `vim`/`htop`/`less` hiển thị lộn xộn; chưa hỗ trợ full-screen TUI |
 | Không GPU | Không chạy app GUI, không game, không Docker Desktop |
 | Cần JIT | Phải sideload + StikDebug mỗi lần mở app |
+| QEMU boot một lần mỗi tiến trình | Dừng Linux xong muốn chạy lại phải thoát hẳn app rồi mở lại |
 | Nhiệt | Build liên tục sẽ throttle sau 15–20 phút |
 
 Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **máy dev bỏ túi cho việc nhẹ**: sửa script, chạy thử API, học Python/Node, demo web.
@@ -125,12 +127,14 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 ```
 [x] Phân tích & chốt kiến trúc
 [x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
-[x] Pipeline build IPA tự động (GitHub Actions) — **đã build xanh, có IPA thật**
-[x] Pipeline build image Debian 13 ARM64 (GitHub Actions) — **đã build xanh, 395 MB nén, Python/pip/numpy/pandas chạy thật**
+[x] Pipeline build IPA tự động (GitHub Actions) — IPA 6.99 MB có engine QEMU nhúng
+[x] Pipeline build image Debian 13 ARM64 — 394 MB nén, Python/Node/npm chạy thật
+[x] Engine QEMU 10.0.12 (UTM fork) build cho iOS arm64, đóng gói framework, phát hành `engine-v1`
+[x] App tải image từ release `img-v1`, kiểm SHA256, giải nén zstd tại chỗ
+[x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Chạy nền: `UIBackgroundModes=audio` + audio im lặng (công tắc trong Thiết lập, lệnh `bg`)
-[ ] Cài app lên iPhone 12 Pro Max        ← bước của bạn
-[ ] M1 — nhúng QEMU, boot Debian, terminal thật (3–4 tuần)
-[ ] M2 — python/node/npm, chia sẻ file, port forward + web thật (3–4 tuần)
+[ ] Cài app lên iPhone 12 Pro Max và test boot          ← bước của bạn
+[ ] M2 — xác nhận python/node/npm + preview trên máy thật
 [ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
 [ ] M4 — tối ưu pin/nhiệt, code-server (tuỳ chọn)
 ```

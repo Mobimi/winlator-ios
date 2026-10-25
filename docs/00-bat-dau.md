@@ -2,9 +2,9 @@
 
 Bạn **không cần Mac**, **không cần biết code**. Build chạy trên GitHub Actions; bạn chỉ làm theo các bước dưới.
 
-Mục tiêu giai đoạn này (M0): **cài được app lên iPhone và đọc đúng trạng thái JIT** (đỏ trước khi StikDebug, xanh sau khi bật). App lúc này **chưa có engine Linux** — máy ảo Linux thật sẽ nối ở M1.
+Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot được Linux và chạy `python3`/`node`/`npm` thật**. App đã có engine QEMU nhúng sẵn, không cần làm gì thêm trên máy tính ngoài việc cài IPA.
 
-> **Bạn không cần cài app UTM.** Khi tài liệu nói "fork UTM", ý là mình lấy **mã nguồn QEMU** của UTM để nhúng vào Devbox ở M1 — không phải bảo bạn tải UTM từ mạng về cài. Cài UTM vừa không cần thiết, vừa dễ gặp lỗi ký app (xem bảng lỗi cuối trang).
+> **Bạn không cần cài app UTM.** QEMU (lấy từ mã nguồn UTM) đã được build sẵn trên GitHub Actions và nhúng trong IPA. Cài UTM chỉ tổ vướng lỗi ký app (xem bảng lỗi cuối trang).
 
 ---
 
@@ -24,41 +24,23 @@ Mục tiêu giai đoạn này (M0): **cài được app lên iPhone và đọc �
 
 ---
 
-## Bước 1 — Đưa code lên GitHub
+## Bước 1 — Lấy IPA (không cần build)
 
-Thư mục `D:\place for gemini\winlator ios` đã là git repo.
+Repo đã ở trên GitHub: `https://github.com/Mobimi/winlator-ios`. Code đã đẩy lên rồi, **không cần GitHub Desktop**.
 
-1. Mở **GitHub Desktop** → đăng nhập.
-2. `File` → `Add local repository…` → chọn thư mục trên.
-3. Bấm **Publish repository**.
-   - Bỏ tick "Keep this code private" nếu muốn Actions miễn phí không giới hạn phút.
-   - Tên gợi ý: `devbox`.
+1. Mở `https://github.com/Mobimi/winlator-ios/actions` trên điện thoại hoặc PC.
+2. Chọn workflow **Build iOS IPA** ở cột trái.
+3. Chọn lần chạy **mới nhất có dấu ✅ xanh**.
+4. Kéo xuống mục **Artifacts** → tải **Devbox-unsigned-ipa** (cần đăng nhập GitHub).
+5. Giải nén file zip → được `Devbox-unsigned.ipa` (khoảng 7 MB).
 
-Nếu báo "not a git repository", mở PowerShell tại thư mục đó:
-
-```powershell
-git init
-git add .
-git commit -m "devbox scaffold"
-```
-
-rồi làm lại bước 2.
-
----
-
-## Bước 2 — Build trên GitHub Actions
-
-1. Vào repo → tab **Actions**.
-2. Chọn **Build iOS IPA** → **Run workflow** → **Run workflow**.
-3. Đợi 3–6 phút, đợi dấu ✅.
-4. Mở lần chạy đó → mục **Artifacts** → tải **Devbox-unsigned-ipa**.
-5. Giải nén → được `Devbox-unsigned.ipa`.
+> Artifact của GitHub Actions chỉ giữ **90 ngày**. Nếu không còn, bấm **Run workflow** để build lại (3–6 phút).
 
 Nếu ❌: bấm vào bước đỏ, copy log gửi mình. Đừng tự sửa.
 
 ---
 
-## Bước 3 — Cài bằng Sideloadly
+## Bước 2 — Cài bằng Sideloadly
 
 1. Cài **iTunes**, mở một lần để Windows nhận driver.
 2. Cài **Sideloadly**, mở lên.
@@ -74,7 +56,7 @@ Nếu iPhone báo "Untrusted Developer":
 
 ---
 
-## Bước 4 — Bật Developer Mode
+## Bước 3 — Bật Developer Mode
 
 1. `Settings` → `Privacy & Security` → kéo xuống → **Developer Mode** → bật.
 2. Khởi động lại iPhone → **Turn On**.
@@ -83,21 +65,21 @@ Không thấy mục này: cắm máy vào PC, mở Sideloadly một lần rồi 
 
 ---
 
-## Bước 5 — Bật JIT bằng StikDebug
+## Bước 4 — Bật JIT bằng StikDebug
 
-Không có JIT, app vẫn mở nhưng QEMU (M1) sẽ không chạy được. Riêng console chẩn đoán thì vẫn chạy được.
+Không có JIT, QEMU TCG sẽ abort ngay khi boot (app báo lỗi kèm log). App vẫn mở được, chỉ Linux không chạy.
 
-### 5.1 Tạo pairing file (trên PC)
+### 4.1 Tạo pairing file (trên PC)
 
 1. Tải **JitterbugPair** cho Windows, giải nén.
 2. Cắm iPhone (đã Trust).
 3. Chạy `jitterbugpair.exe` → tạo file `*.mobiledevicepairing`.
 
-### 5.2 Đưa file sang iPhone
+### 4.2 Đưa file sang iPhone
 
 Gửi qua iCloud Drive / email / Zalo → lưu vào app **Files**.
 
-### 5.3 StikDebug
+### 4.3 StikDebug
 
 1. Mở **StikDebug** → chọn **Pairing File** → trỏ tới file vừa lưu.
 2. Cài **VPN profile** khi được yêu cầu (`Settings` → `General` → `VPN & Device Management`).
@@ -109,7 +91,7 @@ Gửi qua iCloud Drive / email / Zalo → lưu vào app **Files**.
 
 ---
 
-## Bước 6 — Kiểm tra
+## Bước 5 — Kiểm tra JIT
 
 Mở **Devbox** → tab **Thiết lập**. Cần thấy:
 
@@ -120,7 +102,7 @@ Mở **Devbox** → tab **Thiết lập**. Cần thấy:
 
 Sau đó chạy StikDebug → **Enable JIT** cho Devbox, mở lại app: JIT phải chuyển thành **đã bật** ✅ và `proc_csflags` có bit `CS_DEBUGGED`.
 
-> Bản trước báo "JIT đã bật" sai vì kiểm tra bằng `mprotect`. Đã sửa: giờ app đọc đúng `CS_DEBUGGED`, nên **không thể báo xanh khi chưa có debugger attach**.
+> App đọc đúng `CS_DEBUGGED` nên **không thể báo xanh khi chưa có debugger attach**.
 
 ### Giữ nền (để web server không chết khi rời app)
 
@@ -131,46 +113,83 @@ Tab **Thiết lập** → mục **Chạy nền**, cần thấy:
 - `UIBackgroundModes` = `audio ✓`
 - Audio session `playback · mixWithOthers`
 
-Thử thật: bấm Home (hoặc mở app khác) vài phút rồi quay lại — Devbox vẫn ở trạng thái `Đang giữ nền`, không bị khởi động lại. Vuốt app khỏi đa nhiệm thì app tắt (iOS luôn vậy, không có cách chặn).
+Thử thật: bấm Home vài phút rồi quay lại — Devbox vẫn `Đang giữ nền`, không bị khởi động lại. Vuốt app khỏi đa nhiệm thì app tắt (iOS luôn vậy).
 
-> App phát một đoạn audio gần như im lặng (−100 dBFS) để iOS không treo tiến trình. Không nghe thấy gì, nhưng tốn pin và làm máy ấm — tắt công tắc khi không cần. Cách này không cần entitlement và không ảnh hưởng profile free 7 ngày.
+> App phát audio gần như im lặng (−100 dBFS) để iOS không treo tiến trình. Không nghe thấy gì, nhưng tốn pin và làm máy ấm — tắt công tắc khi không cần. Cách này không cần entitlement nên không ảnh hưởng profile free 7 ngày.
 
-Sang tab **Dự án** → mở `hello-python` → gõ:
+---
+
+## Bước 6 — Tải image Debian (~480 MB)
+
+1. Tab **Thiết lập** → mục **Môi trường Linux** → bấm **Tải và cài image (~480 MB)**.
+2. Cần khoảng **3 GB trống**. Giữ app mở; app tự chống khoá màn hình trong lúc tải.
+3. App tải lần lượt `vmlinuz` (36 MB) → `initrd.img` (35 MB) → `rootfs.ext4.zst` (394 MB), kiểm SHA256 từng file rồi giải nén zstd ngay trên máy. Trạng thái chạy qua: `Đang tải…` → `Đang kiểm tra SHA256…` → `Đang giải nén…` → `Image sẵn sàng`.
+4. Thời gian tuỳ mạng, thường 5–15 phút. Lỗi mạng thì bấm lại (file tải lại từ đầu, không resume).
+
+Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Python 3.13.5`, `Node 22.23.4 · npm 10.9.9`.
+
+---
+
+## Bước 7 — Boot Linux lần đầu
+
+1. Tab **Dự án** → mở một dự án bất kỳ (hoặc tạo mới).
+2. App tự gọi QEMU. Dải trên cùng hiện `ĐANG BOOT DEBIAN… (TCG, có thể 30–90 giây)`.
+3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm Gửi.
+4. Bàn phím có thêm hàng phím **Esc / Tab / Ctrl-C / Ctrl-D / ← ↑ ↓ →** cho lệnh cần.
+
+Test nhanh, gõ từng dòng:
 
 ```
-help
-jit
-diag
-bg
-mem
-uname
-df
-ls
-engine
+python3 -V
+node -v
+npm -v
+uname -a
+df -h
 ```
 
-Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, giữ nền, RAM, kernel iOS, dung lượng, file trong sandbox). Lệnh `diag` in một khối chẩn đoán và **copy luôn vào clipboard** — dán vào chat là đủ, không cần chụp ảnh.
+Dùng thật:
 
 ```
-python --version
-npm install express
+cd ~/projects
+mkdir demo && cd demo
+npm init -y && npm install express
+python3 -m venv .venv && source .venv/bin/activate && pip install requests
 ```
 
-sẽ báo **"lệnh Linux chưa chạy được — chưa nối engine QEMU (M1)"**. App **không in kết quả giả** nữa.
+> Nếu quá 40 giây chưa boot xong, dải trên cùng chuyển đỏ kèm lý do. Gần như luôn là **JIT chưa bật** — làm lại Bước 4.
 
-### Web preview
+> Nếu bấm **Dừng Linux**: QEMU không boot lại được trong cùng tiến trình. Vuốt Devbox khỏi đa nhiệm rồi mở lại, bật lại JIT.
 
-Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở được khi QEMU chạy và dev server thật mở cổng (M2). Không còn banner giả. Khi M2 xong, nhờ phần **giữ nền** ở trên, bạn chuyển sang app khác mà `localhost:<cổng>` vẫn trả lời.
+---
+
+## Bước 8 — Web preview tự mở
+
+Trong Linux, chạy dev server nghe cổng **3000**, **5173** hoặc **8080**:
+
+```
+cd ~/projects/demo
+python3 -m http.server 8080
+```
+
+Vài giây sau app tự mở khung web `localhost:8080`. Với Vite:
+
+```
+npm create vite@latest web -- --template vanilla
+cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại. Cổng khác ba cổng trên sẽ không vào được (QEMU chỉ forward ba cổng này).
 
 ---
 
 ## Gửi mình gì
 
-1. Ảnh tab **Thiết lập** (JIT, `proc_csflags`, mục **Chạy nền**).
-2. Ảnh **StikDebug** sau khi bật JIT.
-3. Ảnh console sau khi gõ `jit`, `bg` và `help`.
-4. Kết quả Actions (xanh/đỏ; nếu đỏ thì copy log).
-5. Bạn muốn chạy **Python hay Node** trước, và package nào (`requests`, `express`, `create-vite`…).
+Không cần chụp ảnh — mọi thứ copy được:
+
+1. Tab **Thiết lập** → **Sao chép chẩn đoán** → dán vào chat.
+2. Nếu boot lỗi: **Sao chép log QEMU** (cùng tab) → dán vào chat.
+3. Kết quả `python3 -V`, `node -v`, `npm -v` trong terminal.
+4. Lỗi Sideloadly/StikDebug nếu có (copy nguyên văn).
 
 ---
 
@@ -179,7 +198,7 @@ Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở 
 | Lỗi | Nguyên nhân | Xử lý |
 |---|---|---|
 | `integrity could not be verified` | Chưa trust cert | Settings → General → VPN & Device Management → Trust |
-| App mở rồi văng | Chưa bật Developer Mode / JIT | Làm bước 4 và 5 |
+| App mở rồi văng | Chưa bật Developer Mode / JIT | Làm bước 3 và 4 |
 | Sideloadly `Provision.cpp` | Apple ID chưa đồng ý điều khoản | Đăng nhập appleid.apple.com, đồng ý, thử lại |
 | Sideloadly `AMDeviceSecureStartService` | iTunes/driver lỗi | Cài lại iTunes bản Apple, khởi động lại PC |
 | Actions `xcodegen: command not found` | Bước brew lỗi | Chạy lại workflow |
@@ -191,6 +210,16 @@ Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở 
 | `proc_csflags = không đọc được` | iOS 18+ chặn `sysctl.proc_csflags` với app thường | App tự chuyển sang `csops(CS_OPS_STATUS)`. Nếu cả hai lỗi, `diag` in errno của từng cách |
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
+| Bấm mở dự án, dải đỏ báo `Thiếu engine QEMU…` | IPA tải từ run cũ (trước khi nhúng engine) | Tải lại IPA ở run **Build iOS IPA** mới nhất, cài lại |
+| Dải đỏ `QEMU dừng khi khởi động…` | JIT chưa bật, hoặc dyld không load được framework | Bật JIT bằng StikDebug rồi mở lại. Nếu vẫn lỗi: **Sao chép log QEMU** và gửi |
+| Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
+| Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
+| Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |
+| Tải image báo `SHA256 … không khớp` | Tải hỏng hoặc mạng chèn | Xoá image trong Thiết lập rồi tải lại |
+| Tải image báo `Không đủ dung lượng` | Cần ~3 GB trống | Xoá bớt app/ảnh; iOS không cho app chiếm hết đĩa |
+| `Image sẵn sàng` nhưng boot không lên prompt | Console chưa nối / boot chậm | Đợi 90 giây. Vẫn im: xem log QEMU, gửi `diag` |
+| Gõ lệnh mà không thấy gì | Ô nhập đang mất focus / console chưa nối | Bấm vào ô nhập, gửi lại. Dải trên cùng phải ghi `console đã nối` |
+| Web preview không tự mở | Dev server nghe cổng khác 3000/5173/8080, hoặc bind `localhost` trong guest | Chạy với `--host 0.0.0.0` và cổng 3000/5173/8080. Nút **Web** để mở tay |
 | SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |
 | SideStore `Failed to register bundle identifier` | Bundle ID `app.devbox.dev` đã bị team khác đăng ký | Đổi `PRODUCT_BUNDLE_IDENTIFIER` trong `app/project.yml` (thêm hậu tố riêng), build lại. SideStore cũng tự thêm mã team nếu cần |
 

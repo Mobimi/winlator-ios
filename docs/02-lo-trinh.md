@@ -2,9 +2,11 @@
 
 Ước lượng cho **1 người full-time** (có hỗ trợ của AI), đã có iPhone + Windows + GitHub Actions. Không cần Mac.
 
+**Trạng thái thật (25/10/2026):** M0 ✅ · M1 ✅ (đã build + đóng gói, chờ test trên máy) · M2 🟡 (image + port watch + preview đã có, chưa test thực tế) · M3 ⬜ · M4 ⬜.
+
 ---
 
-## M0 — Pipeline & cài đặt (1 tuần) ← đang ở đây
+## M0 — Pipeline & cài đặt (1 tuần) ✅
 
 | Việc | Xong khi |
 |---|---|
@@ -13,50 +15,38 @@
 | Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-**Artifact:** ảnh chụp tab Thiết lập (JIT đỏ trước, xanh sau) + ảnh console sau `help`.
-
-Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Native Lite** (Python nhúng, không JIT) — xem cuối `docs/01-kien-truc.md`.
+Đã xong: run `40175851247` cho IPA 6.99 MB (SHA256 `2189ee37…`), JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1.
 
 ---
 
-## M1 — Máy ảo boot + terminal thật (3–4 tuần)
+## M1 — Máy ảo boot + terminal thật (3–4 tuần) ✅
 
-| Việc | Xong khi |
+| Việc | Thực tế đã làm |
 |---|---|
-| Fork UTM, chỉ giữ `aarch64-softmmu`, bỏ UI/GPU/audio | Build ra framework nhúng được |
-| `DevboxEngine` (ObjC++) khởi động QEMU trong process riêng | Hàm `boot()` trả về, có log |
-| Console bridge ↔ SwiftTerm | Gõ lệnh trong app, thấy prompt Linux |
-| Bàn phím + resize | `stty size` đúng khi xoay máy / mở bàn phím |
-| Tắt máy an toàn | `poweroff` → QEMU exit, không mất dữ liệu |
-| Rootfs tối giản | Boot đến login < 15 s |
+| Build QEMU cho iOS | Build từ UTM fork `v10.0.12-utm`, `--enable-shared-lib`, chỉ `aarch64-softmmu`, phụ thuộc libffi/glib/pixman/zstd/libslirp tự build |
+| Nhúng QEMU vào app | Mỗi `.dylib` đóng thành `.framework` trong `Payload/Devbox.app/Frameworks`, `install_name` đổi sang `@rpath/<name>.framework/<name>` |
+| Khởi động QEMU | `dlopen` + `qemu_init`/`qemu_main_loop`/`qemu_cleanup` trên `Thread` riêng, `atexit` guard |
+| Console | QEMU `-serial chardev` → TCP `127.0.0.1:4444`; `GuestConsole` nối `NWConnection` |
+| Tắt máy an toàn | QMP `quit` qua `127.0.0.1:4445` |
+| Rootfs | Debian 13 ARM64, ext4 1.87 GB, zstd 394 MB, kernel 6.12.113 |
 
-**Tiêu chí nghiệm thu M1:**
-
-```text
-- Bấm Play → 12 giây sau thấy:  dev@devbox:~$
-- Gõ: python3 --version  → Python 3.13.x
-- Gõ: ls /               → thấy thư mục Linux thật
-- Chạy 20 phút, RAM ổn định, không crash
-- Xoay ngang → terminal resize đúng
-```
-
-**Rủi ro chính:** StikDebug/JIT trên iOS hiện tại; QEMU helper lifecycle trên iOS; tty resize.
+**Chờ test trên máy:** boot lần đầu, độ trễ console, hành vi khi vào nền.
 
 ---
 
-## M2 — Môi trường dev đầy đủ (3–4 tuần)
+## M2 — Môi trường dev đầy đủ (3–4 tuần) 🟡
 
-| Việc | Xong khi |
-|---|---|
-| Image có python3 + pip + venv + node + npm + npx + git + gcc | `node -v`, `pip --version` chạy |
-| Chia sẻ file qua 9p | Kéo file từ Files.app vào `Projects/`, thấy trong guest |
-| Import/export dự án | Nút Xuất → file xuất hiện trong Files.app |
-| Guest agent phát hiện cổng | `/mnt/share/.ports` cập nhật trong ≤ 2 s khi server start/stop |
-| Port forward qua QMP | Cổng mới được `hostfwd_add` tự động, `curl 127.0.0.1:5173` từ app trả HTML |
-| Web preview | `npm run dev` → **tự mở WKWebView** thấy trang Vite, không cần copy địa chỉ |
-| Lưu dữ liệu qua reboot | Tắt/mở app, file vẫn còn |
-| Reset máy ảo | Xoá overlay, giữ `Projects/` |
-| Swap 512 MB | Không bị kill khi build vừa phải |
+| Việc | Xong khi | Trạng thái |
+|---|---|---|
+| Image có python3 + pip + venv + node + npm + npx + git + gcc | `node -v`, `pip --version` chạy | ✅ có trong image |
+| Chia sẻ file qua 9p | File trong `Documents/Devbox/share` thấy ở `/mnt/share` | ✅ |
+| Guest agent phát hiện cổng | `/mnt/share/.ports` cập nhật trong ≤ 2 s | ✅ `portwatch.service` |
+| Port forward | `curl 127.0.0.1:5173` từ app trả HTML | ✅ cố định 3000/5173/8080 |
+| Web preview | `npm run dev` → **tự mở WKWebView** | ✅ code xong, chờ test máy |
+| Lưu dữ liệu qua reboot | Tắt/mở app, file vẫn còn | ✅ vì rootfs.ext4 ghi trực tiếp |
+| Import/export dự án | Nút Xuất → file trong Files.app | ⬜ chưa làm |
+| Reset máy ảo | Xoá image, giữ dữ liệu | ⬜ xoá image = reset toàn bộ |
+| Swap | Có swapfile trong guest | ⬜ không bật (1792 MB RAM) |
 
 **Tiêu chí nghiệm thu M2:**
 
@@ -65,15 +55,14 @@ Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Nativ
 - npm install express             → OK
 - npx create-vite@latest demo    → OK (chậm nhưng xong)
 - cd demo && npm install && npm run dev
-  → khoảng 1–2 giây sau khi Vite báo "Local: 5173",
+  → khoảng 2–5 giây sau khi Vite báo "Local: 5173",
     app tự mở khung web, thấy trang Vite (không thao tác gì thêm)
-- Thêm một dự án Python chạy `uvicorn app:app --port 8000`
-  → app tự mở localhost:8000, banner đổi cổng đúng
-- Tắt tự mở trong Thiết lập → `npm run dev` chỉ hiện banner, không tự mở
+- Thêm một dự án Python chạy `python3 -m http.server 8080`
+  → app tự mở localhost:8080
 - Tắt app, mở lại → project + node_modules còn nguyên
 ```
 
-**Rủi ro chính:** RAM (2.5 GB), 9p chậm, nhiệt khi build.
+**Rủi ro chính:** RAM (1792 MB), 9p chậm, nhiệt khi build.
 
 ---
 
@@ -120,14 +109,15 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 
 ## Việc bạn cần làm tuần này
 
-- [ ] Đưa repo lên GitHub (GitHub Desktop → Add local repository → Publish).
-- [ ] Chạy workflow **Build iOS IPA**, tải artifact.
-- [ ] Cài bằng Sideloadly, bật Developer Mode, bật JIT bằng StikDebug.
-- [ ] Mở app, chụp tab **Thiết lập** (JIT + `proc_csflags` + Chạy nền: `UIBackgroundModes = audio ✓`).
-- [ ] Trong console, gõ `jit`, `bg`, `help` → đối chiếu: JIT phải đỏ khi chưa chạy StikDebug; `bg` phải báo “Đang giữ nền”.
-- [ ] Gửi mình: ảnh 2 tab + **tên package/dự án** bạn muốn chạy đầu tiên (ví dụ `requests`, `express`, `create-vite`).
+- [ ] Tải IPA ở run **Build iOS IPA** mới nhất (artifact `Devbox-unsigned-ipa`).
+- [ ] Cài bằng Sideloadly (Apple ID thường), bật Developer Mode trên máy.
+- [ ] Mở StikDebug → **Enable JIT** cho Devbox (app sẽ tự mở lại).
+- [ ] Tab **Thiết lập** → **Tải và cài image (~480 MB)**. Giữ app mở, cần ~3 GB trống.
+- [ ] Mở dự án → chờ boot (30–90 giây) → thấy `dev@devbox:~$`.
+- [ ] Gõ `python3 -V`, `node -v`, `npm -v` và gửi kết quả.
+- [ ] Bấm Home 2 phút, quay lại, xem đồng hồ "Đã chạy" trong tab Thiết lập có tăng tiếp không.
 
-Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.
+Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán** (và **Sao chép log QEMU** nếu có), dán nguyên văn vào chat.
 
 ---
 
@@ -137,9 +127,9 @@ Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.
 |---|---|---|---|
 | StikDebug/JIT bị chặn trên iOS mới | Trung bình | Không chạy VM | Native Lite (Python nhúng, không JIT) |
 | TCG chậm hơn dự kiến | Trung bình | UX kém | Giảm vCPU, tắt service thừa, dùng Alpine cho boot nhanh |
-| OOM khi `npm install` lớn | Cao | Gián đoạn | Swap, giới hạn 2.5 GB, `--ignore-scripts`, cảnh báo |
+| OOM khi `npm install` lớn | Cao | Gián đoạn | Guest 1792 MB, tránh build Next.js, đóng app khác |
 | 9p quá chậm | Cao | Import chậm | Chỉ dùng 9p để copy, không chạy trực tiếp trên đó |
-| Image 600 MB tải lỗi | Trung bình | Không cài được | Chia chunk + resume + sha256 |
+| Image ~480 MB tải lỗi | Trung bình | Không cài được | `URLSession` tải lại + kiểm SHA256 từng file |
 | Nhiệt/pin | Cao | Không chơi lâu | Cảnh báo, giới hạn, tạm dừng khi nóng |
 | Bạn đổi ý lần nữa | 🙂 | — | UI tách khỏi engine, đổi backend không phải viết lại app |
 
