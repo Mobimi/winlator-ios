@@ -1,0 +1,24 @@
+# Xcode / build
+.DS_Store
+build/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# XcodeGen sinh ra, không commit
+app/Cellar.xcodeproj/
+
+# Sản phẩm
+*.ipa
+*.app
+out/
+
+# Guest image (rất nặng, dùng release riêng)
+guest/out/
+*.img
+*.img.zst
+
+# IDE
+.vscode/
+.idea/

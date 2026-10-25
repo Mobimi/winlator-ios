@@ -1,0 +1,63 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/build-ipa.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: app
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: app
+        run: |
+          xcodebuild \
+            -project Cellar.xcodeproj \
+            -scheme Cellar \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath .build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          APP_PATH="app/.build/Build/Products/Release-iphoneos/Cellar.app"
+          test -d "$APP_PATH" || { echo "App bundle not found"; exit 1; }
+          mkdir -p out/Payload
+          cp -R "$APP_PATH" out/Payload/
+          cd out
+          zip -qry Cellar-unsigned.ipa Payload
+          ls -lh Cellar-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cellar-unsigned-ipa
+          path: out/Cellar-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
