@@ -112,12 +112,12 @@ enum QMPClient {
             setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
             setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
             if !QMPClient.connectLocal(fd, port: port) {
-                close(fd)
+                Darwin.close(fd)
                 return nil
             }
             descriptor = fd
             if readObject(deadline: Date().addingTimeInterval(timeout)) == nil {
-                close(fd)
+                Darwin.close(fd)
                 descriptor = -1
                 fd = -1
                 return nil
@@ -126,7 +126,7 @@ enum QMPClient {
 
         func close() {
             if descriptor >= 0 {
-                close(descriptor)
+                Darwin.close(descriptor)
                 descriptor = -1
             }
             buffer = []
