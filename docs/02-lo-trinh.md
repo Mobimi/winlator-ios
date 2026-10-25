@@ -15,7 +15,7 @@
 | Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-Đã xong: run `40200134157` cho IPA 7.24 MB (SHA256 `d94eb59a…`), có tab **Shell** + bảng kết quả từng lệnh, JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log QEMU nằm trong app Files (`Devbox/logs`).
+Đã xong: run `40202743140` cho IPA 7.28 MB (SHA256 `61d8ab74…`), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, chẩn đoán console qua QMP (`query-chardev`, `rd_bytes`) + nhịp tim guest qua `share/.ports`, tự mở lại serial khi lệnh im lặng. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log QEMU nằm trong app Files (`Devbox/logs`).
 
 ---
 
