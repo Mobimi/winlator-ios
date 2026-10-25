@@ -188,6 +188,7 @@ Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở 
 | JIT bật xong vẫn đỏ | StikDebug attach sai app / app đang chạy trước khi attach | Làm đúng thứ tự: vuốt Devbox khỏi đa nhiệm → mở StikDebug → **Enable JIT** (StikDebug tự mở Devbox) → trong Devbox bấm **Kiểm tra lại thiết bị**. App cũng tự đọc lại mỗi 4 giây |
 | Vẫn đỏ, `P_TRACED = KHÔNG` | Debugger không attach được vào tiến trình (thiếu `get-task-allow`, pairing sai, Developer Mode tắt) | Cài lại bằng **Sideloadly** (bản sideload có `get-task-allow`), bật Developer Mode, tạo lại pairing file, thử lại |
 | Vẫn đỏ, `P_TRACED = CÓ` | Debugger có attach nhưng cờ `CS_DEBUGGED` chưa bật | Gửi mình output `diag`; đây là dữ liệu để xử lý tiếp, không đoán mò |
+| `proc_csflags = không đọc được` | iOS 18+ chặn `sysctl.proc_csflags` với app thường | App tự chuyển sang `csops(CS_OPS_STATUS)`. Nếu cả hai lỗi, `diag` in errno của từng cách |
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |
