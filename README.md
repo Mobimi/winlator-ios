@@ -7,7 +7,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 
 > **Trạng thái thật (2026-10-25):** engine QEMU đã build cho iOS và nhúng trong IPA, image Debian 13 đã phát hành, app đã có luồng tải image → boot → terminal. **Chưa test trên máy thật** — bước tiếp theo là cài IPA và chạy thử.
 >
-> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 7.03 MB (SHA256 `b4156e46…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 1.87 GB (zstd 396 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4.
+> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 7.03 MB (SHA256 `1ef90748…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 1.87 GB (zstd 396 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4.
 >
 > **Image đã boot thật trong CI** (`Test image boot`): vào prompt sau **62 giây** bằng TCG, `python3`/`node`/`npm`/`git`/`gcc` chạy đúng, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 
