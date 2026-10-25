@@ -10,7 +10,7 @@ on:
       - ".github/workflows/build-image.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   image:
@@ -42,3 +42,14 @@ jobs:
           path: out/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view img-v1 >/dev/null 2>&1 || \
+            gh release create img-v1 --title "Devbox Debian 13 ARM64 image" --notes "Debian 13 trixie ARM64 rootfs (ext4, zstd) + kernel 6.12.113 + initrd. Used by the Devbox iOS app."
+          for f in devbox-rootfs.ext4.zst vmlinuz initrd.img manifest.json SHA256SUMS; do
+            gh release upload img-v1 "out/$f" --clobber
+          done
+          cat out/SHA256SUMS

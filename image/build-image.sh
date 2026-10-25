@@ -214,6 +214,19 @@ chown dev:dev /home/dev/.bashrc
 
 echo 'nameserver 10.0.2.3' > /etc/resolv.conf
 
+mkdir -p /etc/systemd/network /etc/systemd/system/multi-user.target.wants \
+  /etc/systemd/system/sockets.target.wants
+cat > /etc/systemd/network/20-wired.network <<'EOF'
+[Match]
+Name=eth* en*
+[Network]
+DHCP=yes
+EOF
+ln -sf /lib/systemd/system/systemd-networkd.service \
+  /etc/systemd/system/multi-user.target.wants/systemd-networkd.service
+ln -sf /lib/systemd/system/systemd-networkd.socket \
+  /etc/systemd/system/sockets.target.wants/systemd-networkd.socket
+
 rm -f /etc/systemd/system/timers.target.wants/apt-daily.timer \
       /etc/systemd/system/timers.target.wants/apt-daily-upgrade.timer \
       /etc/systemd/system/timers.target.wants/man-db.timer 2>/dev/null || true
