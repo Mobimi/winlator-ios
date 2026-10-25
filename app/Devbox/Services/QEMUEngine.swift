@@ -630,7 +630,6 @@ final class QEMUEngine: ObservableObject {
     private static func runCodeTest(_ pointer: UnsafeMutableRawPointer) -> String {
         let words: [UInt32] = [0x52800540, 0xD65F03C0]
         let code = pointer.assumingMemoryBound(to: UInt32.self)
-        devbox_jit_writable(true)
         for (index, word) in words.enumerated() {
             code[index] = word
         }
@@ -639,10 +638,8 @@ final class QEMUEngine: ObservableObject {
         let writtenText = "0x" + String(written, radix: 16)
         QEMUEngine.trace("jit-exec: đọc lại bộ nhớ = \(writtenText) (cần 0x52800540)")
         guard written == words[0] else {
-            devbox_jit_writable(false)
             return "ghi mã máy bị nuốt (\(writtenText))"
         }
-        devbox_jit_writable(false)
         QEMUEngine.trace("jit-exec: gọi mã máy vừa ghi")
         typealias Probe = @convention(c) () -> Int32
         let function = unsafeBitCast(pointer, to: Probe.self)
@@ -721,13 +718,6 @@ final class QEMUEngine: ObservableObject {
 
 @_silgen_name("sys_icache_invalidate")
 private func devbox_icache_invalidate(_ start: UnsafeMutableRawPointer?, _ length: Int)
-
-@_silgen_name("pthread_jit_write_protect_np")
-private func devbox_jit_write_protect(_ enabled: Int32)
-
-private func devbox_jit_writable(_ writable: Bool) {
-    devbox_jit_write_protect(writable ? 0 : 1)
-}
 
 private func devboxExitGuard() {
     QEMUEngine.exitCalled = true
