@@ -22,13 +22,13 @@ PIXMAN_SHA="a7592bef0156d7c27545487a52245669b00cf7e70054505381cff2136d890ca8"
 QEMU_URL="https://github.com/utmapp/qemu/releases/download/v10.0.12-utm/qemu-10.0.12-utm.tar.xz"
 QEMU_SHA="7c9605290b34152debb842e965a55d2e4fbba4793e536ab677b4027e5dc0ba1a"
 
-log() { echo "==> $*"; }
+log() { echo "==> $*" >&2; }
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 mkdir -p "$BUILD" "$SYSROOT" "$SRC" "$OUT"
 
-[ "$(uname -s)" = "Darwin" ] || die "phải chạy trên macOS có Xcode"
+[ "$(uname -s)" = "Darwin" ] || die "must run on macOS with Xcode"
 
 SDKROOT="$(xcrun --sdk "$SDK" --show-sdk-path)"
 CLANG="$(xcrun --sdk "$SDK" --find clang)"
@@ -43,11 +43,11 @@ MKENUMS="$(command -v glib-mkenums || true)"
 GLIB_COMPILE_RESOURCES="$(command -v glib-compile-resources || true)"
 MESON="$(command -v meson || true)"
 
-[ -n "$PKG_CONFIG" ] || die "thiếu pkg-config (brew install pkg-config)"
-[ -n "$PYTHON" ] || die "thiếu python3"
-[ -n "$MESON" ] || die "thiếu meson (brew install meson)"
-[ -n "$MKENUMS" ] || die "thiếu glib-mkenums (brew install glib)"
-[ -n "$GLIB_COMPILE_RESOURCES" ] || die "thiếu glib-compile-resources (brew install glib)"
+[ -n "$PKG_CONFIG" ] || die "missing pkg-config (brew install pkg-config)"
+[ -n "$PYTHON" ] || die "missing python3"
+[ -n "$MESON" ] || die "missing meson (brew install meson)"
+[ -n "$MKENUMS" ] || die "missing glib-mkenums (brew install glib)"
+[ -n "$GLIB_COMPILE_RESOURCES" ] || die "missing glib-compile-resources (brew install glib)"
 
 export CC="$CLANG -target $TARGET"
 export CXX="$CLANGXX -target $TARGET"
@@ -107,13 +107,13 @@ fetch() {
     local url="$1" sha="$2"
     local file="$BUILD/$(basename "$url")"
     if [ ! -f "$file" ]; then
-        log "tải $(basename "$url")"
+        log "fetch $(basename "$url")"
         curl -fL --retry 5 --retry-delay 3 -o "$file.part" "$url"
         mv "$file.part" "$file"
     fi
     local got
     got="$(shasum -a 256 "$file" | awk '{print $1}')"
-    [ "$got" = "$sha" ] || die "sha256 sai: $file (got $got)"
+    [ "$got" = "$sha" ] || die "sha256 mismatch: $file (got $got)"
     echo "$file"
 }
 
@@ -123,7 +123,7 @@ unpack() {
     name="$(basename "$file")"
     name="${name%.tar.*}"
     if [ ! -d "$SRC/$name" ]; then
-        log "giải nén $name"
+        log "extract $name"
         tar -xf "$file" -C "$SRC"
     fi
     echo "$SRC/$name"
@@ -159,7 +159,7 @@ meson_build() {
     )
 }
 
-log "SDK $SDKROOT · target $TARGET · $NCPU job"
+log "SDK $SDKROOT | target $TARGET | $NCPU jobs"
 
 LIBFFI_FILE="$(fetch "$LIBFFI_URL" "$LIBFFI_SHA")"
 LIBFFI_DIR="$(unpack "$LIBFFI_FILE")"
@@ -232,13 +232,79 @@ QEMU_DIR="$(unpack "$QEMU_FILE")"
     ninja install
 )
 
-mkdir -p "$OUT/Frameworks" "$OUT/include" "$OUT/qemu"
-cp -Lf "$SYSROOT"/lib/*.dylib "$OUT/Frameworks"/ 2>/dev/null || true
-cp -Lf "$SYSROOT"/include/*.h "$OUT/include"/ 2>/dev/null || true
-cp -R "$SYSROOT"/include/qemu "$OUT/include"/ 2>/dev/null || true
-cp -R "$SYSROOT"/lib/qemu "$OUT/qemu"/ 2>/dev/null || true
-cp -Lf "$QEMU_DIR"/build/libqemu*.dylib "$OUT/Frameworks"/ 2>/dev/null || true
-cp "$QEMU_DIR"/config-host.mak "$OUT"/ 2>/dev/null || true
+framework_name() {
+    local base
+    base="$(basename "$1")"
+    base="${base%.dylib}"
+    echo "${base#lib}"
+}
 
-log "xong"
+write_plist() {
+    local path="$1" exe="$2" bundle="$3" minos="$4"
+    cat > "$path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>$exe</string>
+	<key>CFBundleIdentifier</key>
+	<string>$bundle</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$exe</string>
+	<key>CFBundlePackageType</key>
+	<string>FMWK</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>MinimumOSVersion</key>
+	<string>$minos</string>
+</dict>
+</plist>
+EOF
+}
+
+pack_frameworks() {
+    local lib name fw minos dep depname src
+    rm -rf "$OUT/Frameworks"
+    mkdir -p "$OUT/Frameworks"
+    for lib in "$SYSROOT"/lib/*.dylib "$QEMU_DIR"/build/libqemu*.dylib; do
+        [ -f "$lib" ] || continue
+        if [ -L "$lib" ]; then
+            continue
+        fi
+        name="$(framework_name "$lib")"
+        fw="$OUT/Frameworks/$name.framework"
+        mkdir -p "$fw"
+        cp "$lib" "$fw/$name"
+        minos="$(vtool -show-build-version "$lib" 2>/dev/null | awk '/minos/ {print $2; exit}')"
+        [ -n "$minos" ] || minos="$SDKMINVER"
+        write_plist "$fw/Info.plist" "$name" "app.devbox.engine.$name" "$minos"
+        install_name_tool -id "@rpath/$name.framework/$name" "$fw/$name"
+    done
+    for fw in "$OUT"/Frameworks/*.framework; do
+        [ -d "$fw" ] || continue
+        src="$fw/$(basename "$fw" .framework)"
+        otool -L "$src" | tail -n +2 | awk '{print $1}' | while read -r dep; do
+            case "$dep" in
+                /usr/lib/* | /System/*) continue ;;
+            esac
+            depname="$(framework_name "$dep")"
+            if [ -d "$OUT/Frameworks/$depname.framework" ]; then
+                install_name_tool -change "$dep" "@rpath/$depname.framework/$depname" "$src"
+            fi
+        done
+    done
+}
+
+pack_frameworks
+
+log "done"
 ls -la "$OUT/Frameworks"
+du -sh "$OUT/Frameworks"
+
