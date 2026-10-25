@@ -29,6 +29,8 @@ jobs:
           ls -lh img
 
       - name: Boot and run smoke test
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
           python3 -m pip install --break-system-packages pexpect
           python3 image/boot_test.py img

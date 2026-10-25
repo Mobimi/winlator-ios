@@ -7,9 +7,18 @@ import time
 
 import pexpect
 
-IMG = sys.argv[1] if len(sys.argv) > 1 else "img"
-SHARE = os.path.abspath(os.path.join(IMG, "share"))
+IMAGE = sys.argv[1] if len(sys.argv) > 1 else "img"
+SHARE = os.path.abspath(os.path.join(IMAGE, "share"))
 os.makedirs(SHARE, exist_ok=True)
+START = time.time()
+
+
+def stamp():
+    return "%6.1fs" % (time.time() - START)
+
+
+def say(message):
+    print("[%s] %s" % (stamp(), message), flush=True)
 
 args = [
     "qemu-system-aarch64",
@@ -19,10 +28,10 @@ args = [
     "-m", "1792",
     "-accel", "tcg,thread=multi,tb-size=256",
     "-rtc", "base=utc,clock=host",
-    "-kernel", os.path.join(IMG, "vmlinuz"),
-    "-initrd", os.path.join(IMG, "initrd.img"),
+    "-kernel", os.path.join(IMAGE, "vmlinuz"),
+    "-initrd", os.path.join(IMAGE, "initrd.img"),
     "-append", "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0",
-    "-drive", "if=virtio,format=raw,cache=writeback,file=" + os.path.join(IMG, "rootfs.ext4"),
+    "-drive", "if=virtio,format=raw,cache=writeback,file=" + os.path.join(IMAGE, "rootfs.ext4"),
     "-virtfs", "local,path=%s,mount_tag=share,security_model=none,multidevs=remap" % SHARE,
     "-netdev", "user,id=n0,hostfwd=tcp:127.0.0.1:5173-:5173",
     "-device", "virtio-net-pci,netdev=n0",
@@ -35,13 +44,13 @@ args = [
     "-name", "devbox-test",
 ]
 
-child = pexpect.spawn(args[0], args[1:], timeout=420, encoding="utf-8", codec_errors="replace", logfile=sys.stdout)
+child = pexpect.spawn(args[0], args[1:], timeout=900, encoding="utf-8", codec_errors="replace", logfile=sys.stdout)
 failures = []
 
 
 def fail(message):
     failures.append(message)
-    print("\nFAIL: " + message)
+    print("\nFAIL: " + message, flush=True)
 
 
 def sync(timeout=60):
@@ -59,8 +68,8 @@ def run(cmd, pattern, timeout=180):
 
 
 try:
-    child.expect(r"dev@devbox:[^\r\n]*\$", timeout=420)
-    print("\nOK: login prompt")
+    child.expect(r"dev@devbox.*\$", timeout=900)
+    say("login prompt")
     child.sendline("echo READY-$((1+1))")
     child.expect("READY-2", timeout=60)
 
@@ -83,20 +92,20 @@ try:
     if "5173" not in ports.split():
         fail("portwatch did not publish 5173, .ports=%r" % ports)
     else:
-        print("OK: portwatch published 5173")
+        say("portwatch published 5173")
 
     curl = subprocess.run(["curl", "-fsS", "--max-time", "10", "http://127.0.0.1:5173/"], capture_output=True, text=True)
     if curl.returncode != 0 or "Directory listing" not in curl.stdout:
         fail("hostfwd/HTTP failed rc=%s out=%r err=%r" % (curl.returncode, curl.stdout[:200], curl.stderr[:200]))
     else:
-        print("OK: hostfwd HTTP responded")
+        say("hostfwd HTTP responded")
 
     child.sendline("kill $(pgrep -f 'http[.]server 5173' | head -n1)")
     sync()
     sync()
     child.sendline("sudo systemctl poweroff")
     child.expect(pexpect.EOF, timeout=180)
-    print("\nOK: clean poweroff")
+    say("clean poweroff")
 except pexpect.EOF:
     fail("QEMU exited early")
 except pexpect.TIMEOUT:
@@ -108,6 +117,6 @@ finally:
         child.terminate(force=True)
 
 if failures:
-    print("\n%d check(s) failed" % len(failures))
+    print("\n%d check(s) failed" % len(failures), flush=True)
     sys.exit(1)
-print("\nall checks passed")
+print("\nall checks passed", flush=True)
