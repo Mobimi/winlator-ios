@@ -249,7 +249,7 @@ final class QEMUEngine: ObservableObject {
         args += ["-drive", "if=virtio,format=raw,cache=writeback,file=\(image.rootfs.path)"]
         args += ["-virtfs", "local,path=\(share.path),mount_tag=share,security_model=none,multidevs=remap"]
         args += ["-netdev", "user,id=n0,hostfwd=tcp:127.0.0.1:8080-:8080,hostfwd=tcp:127.0.0.1:3000-:3000,hostfwd=tcp:127.0.0.1:5173-:5173"]
-        args += ["-device", "virtio-net-pci,netdev=n0"]
+        args += ["-device", "virtio-net-pci,netdev=n0,romfile="]
         args += ["-object", "rng-random,filename=/dev/urandom,id=rng0"]
         args += ["-device", "virtio-rng-pci,rng=rng0"]
         args += ["-chardev", "socket,id=con,host=127.0.0.1,port=\(consolePort),server=on,wait=off"]

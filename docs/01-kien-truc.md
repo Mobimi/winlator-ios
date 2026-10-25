@@ -62,7 +62,7 @@ App `dlopen` framework `Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-s
 -drive if=virtio,format=raw,cache=writeback,file=<image>/rootfs.ext4 \
 -virtfs local,path=<Documents>/Devbox/share,mount_tag=share,security_model=none,multidevs=remap \
 -netdev user,id=n0,hostfwd=tcp:127.0.0.1:8080-:8080,hostfwd=tcp:127.0.0.1:3000-:3000,hostfwd=tcp:127.0.0.1:5173-:5173 \
--device virtio-net-pci,netdev=n0 \
+-device virtio-net-pci,netdev=n0,romfile= \
 -object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 \
 -chardev socket,id=con,host=127.0.0.1,port=4444,server=on,wait=off -serial chardev:con \
 -qmp tcp:127.0.0.1:4445,server=on,wait=off \
@@ -75,6 +75,7 @@ Ghi chú kỹ thuật:
 |---|---|
 | Không spawn được process | Nhúng QEMU dưới dạng `.framework`, gọi trực tiếp `qemu_init`/`qemu_main_loop`/`qemu_cleanup`. `atexit` guard gọi `pthread_exit` nếu QEMU gọi `exit()`, tránh chết cả app. |
 | Console | QEMU `-serial chardev` mở TCP `127.0.0.1:4444`; app nối bằng `NWConnection` và giữ kết nối suốt đời engine (ngắt sẽ làm getty nhận hangup). |
+| Card mạng | Engine build bằng `--disable-install-blobs` nên không có `efi-virtio.rom`; QEMU mặc định gắn ROM PXE cho `virtio-net-pci` và chết với `failed to find romfile "efi-virtio.rom"`. Truyền `romfile=` rỗng để bỏ ROM — kernel đã được nạp bằng `-kernel` nên không cần PXE. |
 | Tắt máy an toàn | App gửi `quit` qua QMP `127.0.0.1:4445`. `qemu_main_loop` trả về → `qemu_cleanup` → state `.stopped`. |
 | Boot lại | QEMU không reentrant: mỗi tiến trình chỉ boot một lần. Dừng rồi muốn chạy tiếp thì thoát hẳn app và mở lại. |
 | JIT | QEMU TCG cần bộ nhớ thực thi. QEMU bản gốc trên Darwin map JIT buffer bằng `MAP_JIT` + `PROT_NONE`; iOS chỉ cho cờ đó khi app có entitlement `dynamic-codesigning` riêng, nên `mmap` trả `EINVAL` (`allocate … bytes for jit buffer: Invalid argument`). Engine Devbox vá `tcg/region.c` bỏ `MAP_JIT` và map thẳng `PROT_READ\|PROT_WRITE\|PROT_EXEC` — đúng kiểu mà `mmap` RWX trên máy đã chứng minh là chạy được khi có debugger (`CS_DEBUGGED`). Trước khi boot, app thử `mmap` RWX 256 → 16 MB để chọn `tb-size` và biết ngay JIT có hiệu lực hay không; nếu bị chặn, app báo lỗi kèm errno thay vì treo. Trong lúc boot, app ghi từng bước (`dlopen`, `dlsym`, `qemu_init`, `main loop`) vào `Documents/logs/qemu.log` — mở bằng app Files, giữ cả `qemu-previous.log` và `diagnostics.txt`; watchdog 90 giây báo bước cuối. |
