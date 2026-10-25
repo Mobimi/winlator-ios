@@ -5,9 +5,9 @@
 
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
-> **Trạng thái thật (đọc trước khi cài):** bản app hiện tại **chưa có engine Linux**. Nó không giả lập `python`/`npm` nữa; terminal chỉ chạy lệnh chẩn đoán thật (`jit`, `mem`, `uname`, `df`, `ls`, `engine`). Muốn có Linux thật phải xong M1 (nhúng QEMU + image Debian).
+> **Trạng thái thật (đọc trước khi cài):** bản app hiện tại **chưa có engine Linux**. Nó không giả lập `python`/`npm` nữa; terminal chỉ chạy lệnh chẩn đoán thật (`jit`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Muốn có Linux thật phải xong M1 (nhúng QEMU + image Debian).
 >
-> **Build đã chạy thật (2026-10-25):** workflow **Build iOS IPA** xanh → `Devbox-unsigned.ipa` (arm64, bundle `app.devbox.dev`). Workflow **Build Debian image** xanh → rootfs ext4 1.87 GB (zstd 395 MB), kernel 6.12.113, Python 3.13.5, pip 26.2.2, Node 22.23.4. Smoke test trong image: `requests 2.34.2, numpy 2.5.4, pandas 3.1.0` cài từ PyPI và import OK.
+> **Build đã chạy thật (2026-10-25):** workflow **Build iOS IPA** xanh → `Devbox-unsigned.ipa` (arm64, bundle `app.devbox.dev`, 190 526 bytes, `UIBackgroundModes = [audio]` đã kiểm tra trong CI). Workflow **Build Debian image** xanh → rootfs ext4 1.87 GB (zstd 395 MB), kernel 6.12.113, Python 3.13.5, pip 26.2.2, Node 22.23.4. Smoke test trong image: `requests 2.34.2, numpy 2.5.4, pandas 3.1.0` cài từ PyPI và import OK.
 
 ---
 
