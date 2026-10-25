@@ -5,7 +5,8 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "image/**"
+      - "image/build-image.sh"
+      - "image/guest/**"
       - ".github/workflows/build-image.yml"
 
 permissions:
