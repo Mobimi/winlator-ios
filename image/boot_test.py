@@ -80,7 +80,7 @@ try:
     run("gcc --version", r"gcc \(Debian")
     run("mountpoint /mnt/share", r"is a mountpoint")
     run("df -h / | tail -n1", r"/dev/vda")
-    run("ip -4 -o addr show eth0", r"inet 10\.0\.2\.15")
+    run("ip -4 -o -c=never addr show eth0", r"inet 10\.0\.2\.15")
     run("python3 -c \"import urllib.request; print('NET', urllib.request.urlopen('https://pypi.org/simple/', timeout=20).status)\"", r"NET 200", timeout=120)
 
     child.sendline("cd /home/dev/projects && python3 -m http.server 5173 >/tmp/http.log 2>&1 &")
