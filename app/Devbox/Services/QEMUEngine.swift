@@ -219,6 +219,10 @@ final class QEMUEngine: ObservableObject {
     private func fail(_ message: String) {
         DispatchQueue.main.async {
             self.stopLogTimer()
+            self.refreshLog()
+            if self.logLines.isEmpty {
+                self.logLines = [message]
+            }
             self.state = .failed(message)
         }
     }
