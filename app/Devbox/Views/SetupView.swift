@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
-    @StateObject private var pad = GamepadMonitor()
 
     var body: some View {
         NavigationStack {
@@ -35,35 +34,36 @@ struct SetupView: View {
                 } header: {
                     Text("JIT")
                 } footer: {
-                    Text("JIT là điều kiện bắt buộc để chạy máy ảo. Bật bằng StikDebug trên iPhone, hoặc cài qua AltStore/SideStore có hỗ trợ JIT.")
+                    Text("Máy ảo Linux dùng JIT của QEMU. Không có JIT thì chỉ chạy được bản mô phỏng UI này. Bật bằng StikDebug.")
                 }
 
                 Section {
-                    if pad.controllers.isEmpty {
-                        Text("Chưa phát hiện tay cầm.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(pad.controllers, id: \.self) { name in
-                            Label(name, systemImage: "gamecontroller.fill")
-                        }
-                    }
-
-                    LabeledContent("Tín hiệu cuối", value: pad.lastEvent)
-
-                    Button("Quét tay cầm") {
-                        pad.startDiscovery()
-                    }
+                    LabeledContent("Image", value: "Debian 13 ARM64")
+                    LabeledContent("Dung lượng", value: "~480 MB (dự kiến)")
+                    LabeledContent("Trạng thái", value: "Chưa cài")
+                    LabeledContent("Engine", value: "QEMU (chưa nối)")
                 } header: {
-                    Text("Tay cầm")
+                    Text("Môi trường Linux")
                 } footer: {
-                    Text("Kết nối tay cầm trong Settings → Bluetooth của iOS trước, sau đó bấm Quét.")
+                    Text("Image sẽ được tải ở lần chạy đầu tiên (M1). Hiện app chỉ chạy shell mô phỏng.")
                 }
 
-                Section("Việc còn lại") {
-                    Label("Cài IPA bằng Sideloadly (Windows)", systemImage: "1.circle")
-                    Label("Bật Developer Mode trên iPhone", systemImage: "2.circle")
-                    Label("Bật JIT bằng StikDebug", systemImage: "3.circle")
-                    Label("Quay lại Thư viện và bấm Play", systemImage: "4.circle")
+                Section("Đã có trong image (dự kiến)") {
+                    Label("python3, pip, venv", systemImage: "chevron.left.forwardslash.chevron.right")
+                    Label("node, npm, npx", systemImage: "hexagon")
+                    Label("git, curl, wget, nano", systemImage: "terminal")
+                    Label("gcc, make (biên dịch chậm nhưng chạy được)", systemImage: "hammer")
+                }
+
+                Section {
+                    Label("App bị iOS tạm dừng sau ~30 giây ở nền", systemImage: "moon.zzz")
+                    Label("Không chạy được app có giao diện đồ hoạ", systemImage: "display")
+                    Label("Không thay thế được laptop cho build nặng", systemImage: "laptopcomputer")
+                    Label("Cần bật lại JIT mỗi lần mở app (StikDebug)", systemImage: "arrow.clockwise")
+                } header: {
+                    Text("Giới hạn đã biết")
+                } footer: {
+                    Text("Đây là giới hạn của iOS, không phải lỗi app. Giữ màn hình sáng khi chạy npm install lâu.")
                 }
 
                 Section {

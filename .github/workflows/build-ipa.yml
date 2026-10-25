@@ -33,8 +33,8 @@ jobs:
         working-directory: app
         run: |
           xcodebuild \
-            -project Cellar.xcodeproj \
-            -scheme Cellar \
+            -project Devbox.xcodeproj \
+            -scheme Devbox \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
@@ -46,18 +46,18 @@ jobs:
 
       - name: Package IPA
         run: |
-          APP_PATH="app/.build/Build/Products/Release-iphoneos/Cellar.app"
+          APP_PATH="app/.build/Build/Products/Release-iphoneos/Devbox.app"
           test -d "$APP_PATH" || { echo "App bundle not found"; exit 1; }
           mkdir -p out/Payload
           cp -R "$APP_PATH" out/Payload/
           cd out
-          zip -qry Cellar-unsigned.ipa Payload
-          ls -lh Cellar-unsigned.ipa
+          zip -qry Devbox-unsigned.ipa Payload
+          ls -lh Devbox-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Cellar-unsigned-ipa
-          path: out/Cellar-unsigned.ipa
+          name: Devbox-unsigned-ipa
+          path: out/Devbox-unsigned.ipa
           if-no-files-found: error
           retention-days: 30

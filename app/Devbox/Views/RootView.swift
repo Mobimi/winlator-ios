@@ -2,17 +2,17 @@ import SwiftUI
 
 struct RootView: View {
     enum Tab {
-        case library
+        case projects
         case setup
     }
 
-    @State private var tab: Tab = .library
+    @State private var tab: Tab = .projects
 
     var body: some View {
         TabView(selection: $tab) {
-            LibraryView()
-                .tabItem { Label("Thư viện", systemImage: "square.grid.2x2") }
-                .tag(Tab.library)
+            ProjectsView()
+                .tabItem { Label("Dự án", systemImage: "folder") }
+                .tag(Tab.projects)
 
             SetupView()
                 .tabItem { Label("Thiết lập", systemImage: "wrench.and.screwdriver") }

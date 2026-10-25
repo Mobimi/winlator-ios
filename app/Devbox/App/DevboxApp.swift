@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct CellarApp: App {
+struct DevboxApp: App {
     @StateObject private var appState = AppState()
 
     var body: some Scene {

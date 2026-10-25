@@ -1,13 +1,12 @@
 import SwiftUI
 
-struct LibraryView: View {
+struct ProjectsView: View {
     @EnvironmentObject private var app: AppState
 
-    @State private var playing: Container?
-    @State private var editing: Container?
-    @State private var showingAdd = false
-    @State private var newName = ""
-    @State private var newGame = ""
+    @State private var opening: Project?
+    @State private var editing: Project?
+    @State private var creating = false
+    @State private var draft = Project(name: "", runtime: .python)
 
     var body: some View {
         NavigationStack {
@@ -19,22 +18,23 @@ struct LibraryView: View {
                 }
 
                 Section {
-                    ForEach(app.containers) { container in
+                    ForEach(app.projects) { project in
                         Button {
-                            playing = container
+                            app.touch(project)
+                            opening = project
                         } label: {
-                            row(container)
+                            row(project)
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                app.delete(container)
+                                app.delete(project)
                             } label: {
                                 Label("Xoá", systemImage: "trash")
                             }
 
                             Button {
-                                editing = container
+                                editing = project
                             } label: {
                                 Label("Sửa", systemImage: "slider.horizontal.3")
                             }
@@ -42,71 +42,77 @@ struct LibraryView: View {
                         }
                     }
                 } header: {
-                    Text("Game của bạn")
+                    Text("Môi trường")
                 } footer: {
-                    Text("Đây là dữ liệu mẫu. Khi engine xong, bấm Play sẽ boot máy ảo Linux và chạy .exe thật.")
+                    Text("Mỗi dự án là một thư mục riêng trong Linux (/home/dev/projects). Dữ liệu mẫu — engine thật nối ở M1.")
                 }
             }
-            .navigationTitle("Cellar")
+            .navigationTitle("Devbox")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        newName = ""
-                        newGame = ""
-                        showingAdd = true
+                        draft = Project(name: "", runtime: .python)
+                        creating = true
                     } label: {
                         Image(systemName: "plus")
                     }
                 }
             }
-            .sheet(item: $playing) { container in
-                GameView(container: container)
+            .sheet(item: $opening) { project in
+                TerminalView(project: project)
             }
-            .sheet(item: $editing) { container in
-                ContainerEditorView(container: container) { updated in
-                    app.update(updated)
+            .sheet(item: $editing) { project in
+                ProjectEditorView(project: project) { updated in
+                    app.upsert(updated)
                 }
             }
-            .alert("Container mới", isPresented: $showingAdd) {
-                TextField("Tên container", text: $newName)
-                TextField("Tên game", text: $newGame)
-                Button("Huỷ", role: .cancel) {}
-                Button("Tạo") {
-                    app.add(name: newName, gameTitle: newGame)
+            .sheet(isPresented: $creating) {
+                ProjectEditorView(project: draft, isNew: true) { created in
+                    app.upsert(created)
                 }
             }
         }
     }
 
-    private func row(_ container: Container) -> some View {
+    private func row(_ project: Project) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(.quaternary)
                 .frame(width: 52, height: 52)
                 .overlay {
-                    Image(systemName: "gamecontroller")
+                    Image(systemName: project.runtime.icon)
                         .foregroundStyle(.secondary)
                 }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(container.gameTitle)
+                Text(project.name.isEmpty ? "Chưa đặt tên" : project.name)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text(container.note.isEmpty ? container.name : container.note)
+
+                Text(subtitle(for: project))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            Image(systemName: "play.fill")
-                .font(.caption)
-                .foregroundStyle(.primary)
-                .padding(10)
-                .background(.quaternary, in: Circle())
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+
+    private func subtitle(for project: Project) -> String {
+        if let opened = project.lastOpened {
+            return "\(project.runtime.label) · mở \(opened.formatted(date: .abbreviated, time: .shortened))"
+        }
+        if !project.note.isEmpty {
+            return project.note
+        }
+        return project.runtime.label
     }
 }
 
@@ -119,7 +125,7 @@ struct JITBanner: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Chưa bật JIT")
                     .font(.subheadline.bold())
-                Text("Không có JIT thì máy ảo không chạy được. Mở tab Thiết lập để xem hướng dẫn.")
+                Text("Máy ảo Linux cần JIT. Mở tab Thiết lập để xem cách bật bằng StikDebug.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

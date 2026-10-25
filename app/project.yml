@@ -1,6 +1,6 @@
-name: Cellar
+name: Devbox
 options:
-  bundleIdPrefix: app.cellar
+  bundleIdPrefix: app.devbox
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -16,26 +16,26 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 
 targets:
-  Cellar:
+  Devbox:
     type: application
     platform: iOS
     sources:
-      - path: Cellar
+      - path: Devbox
         excludes:
           - Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.cellar.dev
-        PRODUCT_NAME: Cellar
+        PRODUCT_BUNDLE_IDENTIFIER: app.devbox.dev
+        PRODUCT_NAME: Devbox
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: "NO"
         ONLY_ACTIVE_ARCH: "NO"
         SWIFT_EMIT_LOC_STRINGS: "YES"
     info:
-      path: Cellar/Info.plist
+      path: Devbox/Info.plist
       properties:
-        CFBundleDisplayName: Cellar
-        CFBundleName: Cellar
+        CFBundleDisplayName: Devbox
+        CFBundleName: Devbox
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -53,7 +53,6 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UIApplicationSupportsIndirectInputEvents: true
-        GCSupportsControllerUserInteraction: true
         ITSAppUsesNonExemptEncryption: false
     scheme:
       testTargets: []

@@ -1,137 +1,127 @@
-# Cellar (codename) — chơi game Windows trên iOS
+# Devbox (codename) — môi trường Linux trên iPhone
 
-> Mục tiêu: một app kiểu **Winlator** trên iOS. Mở app → thư viện game → bấm Play → game `.exe` chạy fullscreen, tay cầm hoạt động, có overlay save/resume.
-> **Không** phải app "mang Windows lên iPad để làm việc". Windows ở đây chỉ là thứ bị giấu bên dưới, phục vụ đúng một việc: chạy game.
+> Mở app → chọn dự án → có một terminal Linux thật, trong đó `python`, `pip`, `node`, `npm`, `npx`, `git`, `gcc` chạy như trên máy tính.
+> Không phải "giả lập cho vui": đây là **Debian ARM64 chạy trong máy ảo**, nên mọi thứ hoạt động giống Linux thật.
+
+Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
 ---
 
-## TL;DR (đọc 30 giây)
-
-| Câu hỏi | Trả lời ngắn |
-|---|---|
-| Làm được không? | **Được**, nhưng chỉ ở dạng **sideload** (AltStore/SideStore/StikDebug/TrollStore). |
-| Lên App Store được không? | Bản App Store **không chơi game 3D được** — thiếu JIT, QEMU phải chạy interpreter chậm 10–50×. |
-| Kiến trúc khả thi nhất | Fork **UTM/QEMU** → VM **Linux ARM64** → **Wine ARM64 + box64** → **DXVK → Vulkan (Venus) → Metal**. |
-| Hiệu năng kỳ vọng | Game 2D/indie/2010–2015 @720p trên iPad M-series: **chơi được**. AAA 2019+: **không**. |
-| Thời gian tới MVP | **9–12 tháng** cho 1 người full-time; **5–6 tháng** cho team 2–3 người. |
-| Điểm ăn tiền so với Winlator | **Snapshot VM** = save/resume tức thì, mỗi game một "container" riêng, UI thuần game. |
-
-### Cấu hình hiện tại của bạn (đã điều chỉnh)
+## TL;DR
 
 | | |
 |---|---|
-| Máy build | **Không có Mac** → build bằng GitHub Actions (macOS runner) |
-| Máy chơi | **iPhone 12 Pro Max** (A14, 6GB, 60Hz) |
-| Kênh cài | Sideloadly trên Windows + StikDebug để bật JIT |
-| Kỳ vọng | 2D/visual novel/DX9 cũ ở 720p 30fps. **Không** AAA. Muốn chơi game nặng → cần iPad M1+ hoặc stream từ PC |
-
-👉 **Bắt đầu tại [`docs/00-bat-dau-tu-day.md`](docs/00-bat-dau-tu-day.md)** — hướng dẫn từng bước, không cần biết code.
-
-> ⚠️ **Nếu mục tiêu là game 3D hiện đại kiểu MiSide ("Mita")**: máy ảo local **không chạy nổi** trên iPhone 12 Pro Max. Đọc [`docs/05-mita-miside-tren-iphone.md`](docs/05-mita-miside-tren-iphone.md) — cách chơi 60 fps ngay bằng stream từ laptop.
-
----
-
-## 1. Vì sao không "port Winlator sang iOS" theo cách thông thường?
-
-Winlator trên Android là tập hợp:
-
-```
-Wine (ARM64)  +  box64 (dịch x86_64 → ARM64, JIT)
-              +  DXVK / VKD3D (D3D → Vulkan)
-              +  Turnip (Vulkan driver cho Adreno)
-              +  proot (giả lập root Linux)  +  XServer XSDL / Termux:X11  +  PulseAudio
-```
-
-Android cho phép **chạy tiến trình Linux thật** (proot, fork/exec, `/proc`, `mmap` tự do) và cho phép **JIT** (Android không cấm). iOS cấm gần như tất cả những thứ đó:
-
-1. **Không có JIT** cho app thường → box64/DXVK/QEMU không thể sinh mã máy lúc chạy.
-2. **Không có tiến trình thật** → Wine cần `wineserver` + `fork/exec`; trên iOS bạn chỉ có 1 process duy nhất (trừ khi tự viết loader nội bộ kiểu a-Shell).
-3. **Không có Linux syscall** → box64/Wine là binary Linux ELF, cần một lớp dịch syscall (iSH làm việc này cho x86 32-bit, nhưng chậm và không có bản ARM64 64-bit tử tế).
-
-→ Vì vậy "port thẳng Winlator" = viết lại một nhân Linux ở userspace + tự viết loader + port Wine. Đó là dự án nhiều năm.
-
-**Cách lách:** đừng cố chạy Linux *trên* iOS. Chạy **một máy ảo Linux ARM64** bằng QEMU (JIT) — đúng thứ UTM đã làm được — rồi nhét nguyên stack Winlator vào trong máy ảo đó. iOS chỉ thấy "một app đang chạy QEMU", không thấy Linux.
+| Chạy gì | Python 3.13 + pip, Node 22 + npm/npx, git, gcc, curl, nano… |
+| Chạy thế nào | QEMU (fork UTM) + Debian 13 ARM64, **không GPU, không Wine** |
+| Giao diện | Terminal (chính) + quản lý dự án + mở dev server trong Safari |
+| Máy | iPhone 12 Pro Max (A14, 6 GB) |
+| Build | GitHub Actions → `.ipa` → Sideloadly (không cần Mac) |
+| JIT | **Bắt buộc** cho QEMU → phải sideload + StikDebug |
+| Thời gian tới bản dùng được | **8–11 tuần** (1 người) |
+| So với Winlator | Dễ hơn rất nhiều: bỏ Wine, bỏ box64, bỏ DXVK, bỏ GPU |
 
 ---
 
-## 2. Bốn hướng đi, so sánh thẳng
+## Vì sao lại là máy ảo Linux, không phải nhúng Python/Node vào app?
 
-| | A. Stream từ PC | B. Windows ARM64 VM | **C. Linux ARM64 + Wine + box64** | D. Native syscall layer |
-|---|---|---|---|---|
-| Cách chạy | Moonlight/Sunshine tới PC | QEMU + Windows 11 ARM64 + Prism | QEMU + Debian ARM64 + Wine + box64 | box64/Wine chạy trực tiếp, tự viết lớp syscall |
-| CPU | Remote | TCG (hoặc HVF nếu M1 iPad + TrollStore) | TCG + box64 (2 lớp dịch) | box64 (1 lớp dịch) |
-| GPU | Remote | VirtIO-GPU, D3D experimental | DXVK → Vulkan Venus → Metal | DXVK → MoltenVK |
-| Tương thích game | ~100% | Trung bình (Prism + driver non) | Tốt (đúng stack Winlator) | Tốt |
-| Tốc độ | 60 fps | Khá (nếu HVF) / chậm (nếu TCG) | Trung bình | Tốt nhất |
-| Công sức | 2–3 tháng | 3–6 tháng | **9–12 tháng** | 24 tháng+ |
-| App Store | ✅ Được | ❌ | ❌ | ❌ |
-| Rủi ro | Cần PC | Driver GPU non, license Windows | Venus/DXVK lỗi từng game | Gần như không có tiền lệ |
+Đã cân nhắc 3 cách:
 
-**Khuyến nghị: C.** Lý do:
+| | Nhúng native (CPython xcframework, nodejs-mobile) | WASM (Pyodide…) | **Máy ảo Linux ARM64** |
+|---|---|---|---|
+| Python + pip | ✅ nhưng chỉ wheel thuần Python | ⚠️ chậm, thiếu package | ✅ đầy đủ, kể cả numpy/pandas |
+| Node + npm + npx | ⚠️ build rất khó, thiếu `child_process` | ❌ npm không chạy thật | ✅ thật 100% |
+| Native module (.node, .so) | ❌ không có | ❌ | ✅ prebuild arm64 hoặc tự compile |
+| `npm install` có script | ❌ | ❌ | ✅ |
+| Khởi động | tức thì | vài giây | 5–10 giây |
+| Pin / nhiệt | tốt | trung bình | nặng |
+| Cần JIT | không | không | **có** |
+| Rủi ro kỹ thuật | cao (Node trên iOS) | cao | **thấp** |
 
-- Là con đường duy nhất giữ được **tương thích kiểu Winlator** (DXVK, box64 tuning, preset per-game) mà không phải viết nhân Linux.
-- Tái sử dụng được **UTM** (Apache-2.0, frontend + QEMU fork đã build sẵn cho iOS, đã có SPICE, đã có VirtIO-GPU/Venus, đã có cơ chế JIT sideload).
-- B và C **dùng chung engine VM** → có thể làm B trước như bước đệm kỹ thuật (chứng minh VM + GPU + input chạy), rồi nâng lên C.
-- A là fallback thương mại: cùng một UI, thêm backend "Remote PC" để có sản phẩm dùng được ngay trong lúc C còn đang xây.
+→ Chọn **máy ảo**. Đánh đổi: khởi động chậm và tốn pin, nhưng **đúng** — `npm` và `pip` hoạt động thật, không có "gần đúng".
 
 ---
 
-## 3. Kiến trúc chốt (tóm tắt)
+## Kiến trúc
 
 ```
-iOS app (SwiftUI + Metal)
- ├── Library / Container / Per-game profile
- ├── QEMU (UTM fork) ── vCPU ARM64 (TCG JIT)
- │     ├── VirtIO-GPU ─► virglrenderer + Venus ─► MoltenVK/ANGLE ─► Metal
- │     ├── SPICE ─► hiển thị + âm thanh (CoreAudio)
- │     └── VirtIO-serial ─► cellar-agent (trong guest)
- └── GamepadBridge (GameController.framework) ─► agent ─► uinput ─► XInput
-
-Guest: Debian ARM64 (rootfs tự build)
- ├── gamescope/X11 (fullscreen, không desktop)
- ├── Wine ARM64  +  box64  ─► game.exe
- ├── DXVK (x86_64 PE, qua box64) ─► Vulkan ─► Venus
- ├── PulseAudio ─► SPICE
- └── cellar-agent: nhận lệnh launch/kill/snapshot, đọc log, nhận input
+┌───────────────────── iOS app (SwiftUI) ─────────────────────┐
+│ Dự án · Terminal · Thiết lập                                │
+│  ├─ SwiftTerm  ◄──── TCP localhost ────┐                    │
+│  ├─ PortForward → Safari (localhost)   │                    │
+│  └─ QEMU host (process riêng, JIT)     │                    │
+│        ├─ virtio-console (ttyAMA0) ────┘                    │
+│        ├─ virtio-blk: Debian 13 ARM64 (qcow2)               │
+│        ├─ virtio-9p: /home/dev/projects ↔ app Documents     │
+│        └─ virtio-net (user-mode) + hostfwd 5173/3000/8000   │
+└──────────────────────────────────────────────────────────────┘
+                              │
+┌──────────────────── Debian 13 ARM64 guest ──────────────────┐
+│ python3 · pip · venv · node · npm · npx · git · gcc · zsh    │
+│ /home/dev/projects/<slug>                                    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-Chi tiết đầy đủ: [`docs/02-kien-truc.md`](docs/02-kien-truc.md)
+Không có: GPU, âm thanh, USB, Wayland/X11, Wine, box64. Đó là lý do dự án nhỏ hơn nhiều.
+
+Chi tiết: [`docs/01-kien-truc.md`](docs/01-kien-truc.md)
 
 ---
 
-## 4. Tài liệu trong repo
+## Bạn sẽ làm gì với nó
+
+```bash
+# Python
+python3 -m venv .venv && source .venv/bin/activate
+pip install requests numpy
+python app.py
+
+# Node
+npm install
+npm run dev          # mở http://localhost:5173 trong Safari
+npx create-vite@latest
+
+# Khác
+git clone …
+gcc main.c -o main
+```
+
+---
+
+## Giới hạn thật (đọc trước khi kỳ vọng)
+
+| Giới hạn | Hệ quả |
+|---|---|
+| iOS tạm dừng app sau ~30 giây ở nền | `npm install` dài phải giữ app mở, màn hình sáng |
+| Guest chỉ có ~2.5 GB RAM | Build lớn (Next.js, webpack nhiều entry) dễ OOM |
+| QEMU TCG trên A14 | CPU ≈ laptop 2015; chạy được, build chậm |
+| Không GPU | Không chạy app GUI, không game, không Docker Desktop |
+| Cần JIT | Phải sideload + StikDebug mỗi lần mở app |
+| Nhiệt | Build liên tục sẽ throttle sau 15–20 phút |
+
+Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **máy dev bỏ túi cho việc nhẹ**: sửa script, chạy thử API, học Python/Node, demo web.
+
+---
+
+## Trạng thái
+
+```
+[x] Phân tích & chốt kiến trúc
+[x] App shell: dự án, terminal mô phỏng, kiểm tra JIT, thông tin thiết bị
+[x] Pipeline build IPA tự động (GitHub Actions)
+[ ] Cài app lên iPhone 12 Pro Max        ← bước tiếp theo của bạn
+[ ] M1 — QEMU boot Debian, terminal thật (3–4 tuần)
+[ ] M2 — python/node/npm, chia sẻ file, port forward (3–4 tuần)
+[ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
+[ ] M4 — tối ưu hiệu năng, chế độ nền, code-server (tuỳ chọn)
+```
+
+---
+
+## Đọc gì trước
 
 | File | Nội dung |
 |---|---|
-| [`docs/00-bat-dau-tu-day.md`](docs/00-bat-dau-tu-day.md) | **Bắt đầu tại đây** — build bằng GitHub Actions, cài IPA bằng Sideloadly, bật JIT bằng StikDebug |
-| [`docs/01-kha-thi-ky-thuat.md`](docs/01-kha-thi-ky-thuat.md) | Rào cản cứng của iOS, JIT, App Store, GPU, ngân sách hiệu năng, pháp lý |
-| [`docs/02-kien-truc.md`](docs/02-kien-truc.md) | Kiến trúc chi tiết, luồng khởi động, input/display/audio, snapshot, cấu trúc repo |
-| [`docs/03-roadmap.md`](docs/03-roadmap.md) | Mốc M0→M5, tiêu chí nghiệm thu, ước lượng thời gian, việc cần chuẩn bị |
-
----
-
-## 5. Trạng thái repo
-
-```
-[x] Phân tích khả thi
-[x] Chốt kiến trúc
-[x] Roadmap + tiêu chí nghiệm thu
-[x] App shell: thư viện game, cấu hình container, overlay, kiểm tra JIT, tay cầm
-[x] Pipeline build IPA tự động bằng GitHub Actions (không cần Mac)
-[ ] Cài được app lên iPhone 12 Pro Max  ← bạn đang ở đây
-[ ] M0 — spike GPU bằng UTM gốc (chứng minh DXVK + Venus chạy)
-[ ] M1 — VM Linux ARM64 boot + hiển thị + tay cầm
-[ ] M2 — Wine chạy .exe đầu tiên
-[ ] M3 — GPU (Venus + DXVK)
-[ ] M4 — UX kiểu Winlator (library, profile, overlay, snapshot)
-[ ] M5 — tương thích + hiệu năng
-```
-
----
-
-## 6. Những gì dự án này **không** làm
-
-- Không đưa desktop Windows ra cho người dùng (không phải "Windows trên iPad").
-- Không kèm Windows ISO, không kèm game, không kèm key bản quyền.
-- Không hứa chạy AAA mới. Nếu game bạn muốn chơi ra sau 2018 và nặng 3D, hãy dùng hướng A (stream).
-- Không dùng chứng chỉ enterprise lậu để phát hành. Chỉ sideload hợp lệ (Apple ID cá nhân / dev account / AltStore PAL ở EU).
+| [`docs/00-bat-dau.md`](docs/00-bat-dau.md) | Cài app lên iPhone: GitHub Actions → Sideloadly → StikDebug |
+| [`docs/01-kien-truc.md`](docs/01-kien-truc.md) | Kiến trúc, QEMU config, guest image, port forward, giới hạn |
+| [`docs/02-lo-trinh.md`](docs/02-lo-trinh.md) | Mốc M0–M4, tiêu chí nghiệm thu, ước lượng |
+| [`docs/archive-winlator/`](docs/archive-winlator/) | Tài liệu cũ của hướng Winlator (để tham khảo, không còn triển khai) |
