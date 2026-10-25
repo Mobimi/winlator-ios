@@ -21,6 +21,10 @@ PIXMAN_URL="https://www.cairographics.org/releases/pixman-0.38.0.tar.gz"
 PIXMAN_SHA="a7592bef0156d7c27545487a52245669b00cf7e70054505381cff2136d890ca8"
 QEMU_URL="https://github.com/utmapp/qemu/releases/download/v10.0.12-utm/qemu-10.0.12-utm.tar.xz"
 QEMU_SHA="7c9605290b34152debb842e965a55d2e4fbba4793e536ab677b4027e5dc0ba1a"
+ZSTD_URL="https://github.com/facebook/zstd/releases/download/v1.5.2/zstd-1.5.2.tar.gz"
+ZSTD_SHA="7c42d56fac126929a6a85dbc73ff1db2411d04f104fae9bdea51305663a83fd0"
+SLIRP_URL="https://github.com/utmapp/libslirp/releases/download/v4.9.1-release-mirror/libslirp-v4.9.1.tar.gz"
+SLIRP_SHA="3970542143b7c11e6a09a4d2b50f30a133473c41f15ed0bdcc3b7a1c450d9a5c"
 
 log() { echo "==> $*" >&2; }
 
@@ -191,8 +195,29 @@ fi
 autotools_build "$PIXMAN_DIR" --disable-libpng --disable-gtk
 [ -f "$SYSROOT/lib/pkgconfig/pixman-1.pc" ] || die "pixman did not install pixman-1.pc"
 
+SLIRP_FILE="$(fetch "$SLIRP_URL" "$SLIRP_SHA")"
+SLIRP_DIR="$(unpack "$SLIRP_FILE")"
+if [ ! -f "$SLIRP_DIR/.devbox-patched" ]; then
+    log "patch libslirp"
+    patch -d "$SLIRP_DIR" -p1 < "$ROOT/engine/patches/libslirp-v4.9.1.patch"
+    touch "$SLIRP_DIR/.devbox-patched"
+fi
+meson_build "$SLIRP_DIR"
+[ -f "$SYSROOT/lib/pkgconfig/slirp.pc" ] || die "libslirp did not install slirp.pc"
+
 QEMU_FILE="$(fetch "$QEMU_URL" "$QEMU_SHA")"
 QEMU_DIR="$(unpack "$QEMU_FILE")"
+
+ZSTD_FILE="$(fetch "$ZSTD_URL" "$ZSTD_SHA")"
+ZSTD_DIR="$(unpack "$ZSTD_FILE")"
+meson_build "$ZSTD_DIR/build/meson" \
+    -Dbin_programs=false \
+    -Dbin_tests=false \
+    -Dbin_contrib=false \
+    -Dzlib=disabled \
+    -Dlzma=disabled \
+    -Dlz4=disabled
+[ -f "$SYSROOT/lib/pkgconfig/libzstd.pc" ] || die "zstd did not install libzstd.pc"
 
 (
     cd "$QEMU_DIR"

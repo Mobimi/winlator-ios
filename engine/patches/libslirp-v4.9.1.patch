@@ -1,0 +1,12 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -118,7 +118,7 @@
+   if target_winver != ''
+     cargs += '-DTARGET_WINVER=@0@'.format(target_winver)
+   endif
+-elif host_system == 'darwin'
++elif host_system == 'darwin' or host_system == 'ios'
+   libslirp_deps += [
+     cc.find_library('resolv')
+   ]
