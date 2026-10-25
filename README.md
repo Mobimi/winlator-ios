@@ -6,6 +6,8 @@
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
 > **Trạng thái thật (đọc trước khi cài):** bản app hiện tại **chưa có engine Linux**. Nó không giả lập `python`/`npm` nữa; terminal chỉ chạy lệnh chẩn đoán thật (`jit`, `mem`, `uname`, `df`, `ls`, `engine`). Muốn có Linux thật phải xong M1 (nhúng QEMU + image Debian).
+>
+> **Build đã chạy thật (2026-10-25):** workflow **Build iOS IPA** xanh → `Devbox-unsigned.ipa` (arm64, bundle `app.devbox.dev`). Workflow **Build Debian image** xanh → rootfs ext4 1.73 GB (zstd 363 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4. Cả hai artifact đã tải về máy.
 
 ---
 
@@ -123,8 +125,8 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 ```
 [x] Phân tích & chốt kiến trúc
 [x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
-[x] Pipeline build IPA tự động (GitHub Actions)
-[x] Pipeline build image Debian 13 ARM64 (GitHub Actions)
+[x] Pipeline build IPA tự động (GitHub Actions) — **đã build xanh, có IPA thật**
+[x] Pipeline build image Debian 13 ARM64 (GitHub Actions) — **đã build xanh, rootfs 363 MB nén**
 [ ] Cài app lên iPhone 12 Pro Max        ← bước của bạn
 [ ] M1 — nhúng QEMU, boot Debian, terminal thật (3–4 tuần)
 [ ] M2 — python/node/npm, chia sẻ file, port forward + web thật (3–4 tuần)

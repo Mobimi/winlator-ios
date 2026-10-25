@@ -19,6 +19,17 @@ Không chạy được trên Windows trực tiếp — cần Linux/WSL2 hoặc A
 | `manifest.json` | sha256, phiên bản Python/Node/npm, kernel |
 | `SHA256SUMS` | Kiểm tra tải về |
 
+## Kết quả build thật (2026-10-25, runner `ubuntu-24.04-arm`)
+
+| File | Kích thước |
+|---|---|
+| `devbox-rootfs.ext4.zst` | 363 MB (giải nén: 1.73 GB) |
+| `vmlinuz` | 36 MB — kernel `6.12.113+deb13-arm64` |
+| `initrd.img` | 36 MB |
+| Artifact `devbox-debian-image` | 410 MB |
+
+Phiên bản trong image: Python `3.13.5`, pip `25.1.1`, Node `v22.23.4` (sha256 khớp), npm đi kèm Node.
+
 ## Có gì trong image
 
 - Debian 13 minimal, glibc, systemd

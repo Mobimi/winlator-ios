@@ -109,9 +109,9 @@ Quyết định quan trọng:
 
 | Thành phần | Ghi chú |
 |---|---|
-| Base | Debian 13 (trixie) ARM64, minimal, **glibc** (không chọn Alpine vì musl làm hỏng nhiều wheel/native module) |
-| Kernel | `linux-image-arm64` của Debian, hoặc kernel tự build nhỏ hơn (bật virtio, 9p, ext4, cgroup) |
-| Python | `python3` + `python3-venv` + `python3-pip` + `python3-dev` |
+| Base | Debian 13 (trixie) ARM64, minimal, **glibc** (không chọn Alpine vì musl làm hỏng nhiều wheel/native module). Build thật: 1.73 GB ext4 → 363 MB zstd. |
+| Kernel | `linux-image-arm64` của Debian (**6.12.113** khi build) |
+| Python | `python3` + `python3-venv` + `python3-pip` + `python3-dev` (build thật: **3.13.5**) |
 | Node | Node 22.23.4 từ tarball chính thức nodejs.org (ghim sha256); kèm `npm`, `npx` |
 | Build | `build-essential`, `pkg-config` |
 | Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip` |
