@@ -26,6 +26,66 @@ Image đã build thật ngày 2026-10-25 (`image/build-image.sh`, runner `ubuntu
 
 Đây là userland Linux bình thường. Bất cứ thứ gì `apt`/`pip`/`npm` cài được cho **linux-arm64** đều chạy được trong đó.
 
+## Python — "hỗ trợ hết chưa?"
+
+**Về mặt Python: giống PC Linux, không phải bản rút gọn.**
+
+- CPython **3.13.5** đầy đủ (stdlib, `ssl`, `sqlite3`, `zlib`, `ctypes`, `tkinter` có nhưng không có màn hình)
+- **pip 26.2.2** lấy trực tiếp từ **PyPI**, không qua kho riêng
+- `venv`, `setuptools`, `wheel`, header dev + `gcc 14.2` → cài được cả gói chỉ có source
+- Đã bỏ marker PEP 668 → `pip install` chạy toàn cục đúng như trên PC (không phải tạo venv mới cài được)
+- `pip install git+https://…`, `python -m build`, `poetry`, `uv`, `pipx` đều cài và chạy được
+
+**Đã kiểm chứng thật trong image (build 2026-10-25), không phải lý thuyết:**
+
+```
+pip: pip 26.2.2
+python smoke OK: requests 2.34.2, numpy 2.5.4, pandas 3.1.0
+```
+
+Tức là pip đã tải **wheel manylinux aarch64** từ PyPI, cài và `import` thành công ngay trong rootfs Debian của Devbox. Kết quả này được ghi vào `manifest.json` mỗi lần build.
+
+### Cái gì chạy y như PC
+
+| Nguồn | Trạng thái |
+|---|---|
+| PyPI (wheel `manylinux aarch64`) | ✅ đa số gói phổ biến có wheel arm64 |
+| PyPI (chỉ có source `.tar.gz`) | ✅ có gcc + header, chỉ chậm |
+| GitHub / GitLab (`pip install git+…`) | ✅ có `git` |
+| File `.whl` tải tay | ✅ nếu là `aarch64`/`universal2`-không, tức `py3-none-any` hoặc `manylinux*aarch64` |
+| `apt install python3-…` | ✅ |
+| Conda/Miniforge | ⚠️ không cài sẵn; cài tay được (`Miniforge3-Linux-aarch64.sh`) |
+
+### Cái gì **không** chạy — và lý do
+
+| Loại | Lý do |
+|---|---|
+| Gói chỉ có wheel **Windows** (`pywin32`, `winsound`, `msvcrt`) | OS là Linux |
+| Gói chỉ phát hành wheel **x86_64**, không có aarch64 | PyPI không có bản arm64 → chỉ còn cách build từ source nếu mã nguồn cho phép |
+| Gói cần **GPU/CUDA** | không có GPU trong máy ảo |
+| Gói cần **màn hình** (`tkinter` hiện cửa sổ, `pyautogui`, `pygame` display) | chỉ có console, không có X11/Wayland |
+| `selenium` / `playwright` + Chromium | Chromium arm64 chạy được về lý thuyết nhưng gần như chắc chắn OOM |
+| `torch`/`tensorflow` bản lớn | wheel arm64 có, nhưng tải nặng + RAM 2.5 GB dễ OOM; CPU-only và rất chậm |
+
+### Khác biệt lớn nhất không phải "hỗ trợ" mà là **tốc độ**
+
+Cùng một `python app.py`:
+
+- Code thuần Python: chậm ~5–15× so với PC
+- numpy/pandas: phần tính toán là C đã biên dịch, nhưng vẫn chạy trên CPU giả lập → chậm vài lần
+- `pip install` gói có wheel: 30–90 giây; gói phải compile: 5–20 phút
+
+### Jupyter / notebook
+
+Chạy được và **xem được ngay trong app** (không cần GUI):
+
+```bash
+pip install jupyterlab
+jupyter lab --no-browser --ip=0.0.0.0 --port 8888
+```
+
+Ở M2, app tự thấy cổng 8888 và mở trong khung web — đó là cách "toàn diện" cho Python mà không cần desktop.
+
 ## Ma trận khả năng
 
 ### Chạy tốt

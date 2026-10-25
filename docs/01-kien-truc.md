@@ -114,7 +114,7 @@ Quyết định quan trọng:
 | Python | `python3` + `python3-venv` + `python3-pip` + `python3-dev` (build thật: **3.13.5**) |
 | Node | Node 22.23.4 từ tarball chính thức nodejs.org (ghim sha256); kèm `npm`, `npx` |
 | Build | `build-essential`, `pkg-config` |
-| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip` |
+| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`; thêm `cmake`, `libssl-dev`, `libffi-dev`, `libxml2-dev`, `libpq-dev`… để build extension Python từ source |
 | Locale | `en_US.UTF-8` (tránh lỗi pip/npm với locale C) |
 
 Kích thước mục tiêu: **≤ 1.6 GB** chưa nén, **≤ 600 MB** sau zstd. Tải lần đầu, có resume + sha256.

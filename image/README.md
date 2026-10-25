@@ -23,12 +23,20 @@ Không chạy được trên Windows trực tiếp — cần Linux/WSL2 hoặc A
 
 | File | Kích thước |
 |---|---|
-| `devbox-rootfs.ext4.zst` | 363 MB (giải nén: 1.73 GB) |
+| `devbox-rootfs.ext4.zst` | 395 MB (giải nén: 1.87 GB) |
 | `vmlinuz` | 36 MB — kernel `6.12.113+deb13-arm64` |
 | `initrd.img` | 36 MB |
-| Artifact `devbox-debian-image` | 410 MB |
+| Artifact `devbox-debian-image` | ~466 MB |
 
-Phiên bản trong image: Python `3.13.5`, pip `25.1.1`, Node `v22.23.4` (sha256 khớp), npm đi kèm Node.
+Phiên bản trong image: Python `3.13.5`, pip `26.2.2`, Node `v22.23.4`, npm `10.9.9`.
+
+Kiểm tra Python chạy thật (chạy trong chính rootfs lúc build, ghi vào `manifest.json`):
+
+```
+python smoke OK: requests 2.34.2, numpy 2.5.4, pandas 3.1.0
+```
+
+Nghĩa là pip tải wheel `manylinux aarch64` từ PyPI, cài và import được — không cần mạng đặc biệt, không cần bản Python riêng.
 
 ## Có gì trong image
 
