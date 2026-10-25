@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7 MB, SHA256 `dbec4ede…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
+File khoảng 7 MB, SHA256 `bc9628a8…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
 
 **Cách khác (qua Artifacts):**
 
@@ -139,7 +139,7 @@ Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Py
 ## Bước 7 — Boot Linux lần đầu
 
 1. Tab **Dự án** → mở một dự án bất kỳ (hoặc tạo mới).
-2. App tự gọi QEMU. Dải trên cùng hiện `ĐANG BOOT DEBIAN… (TCG, có thể 30–90 giây)`.
+2. App tự gọi QEMU. Dải trên cùng hiện `ĐANG KHỞI ĐỘNG · <bước cuối>` (vd. `dlopen engine`, `gọi qemu_init`).
 3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm Gửi.
 4. Bàn phím có thêm hàng phím **Esc / Tab / Ctrl-C / Ctrl-D / ← ↑ ↓ →** cho lệnh cần.
 
@@ -162,7 +162,9 @@ npm init -y && npm install express
 python3 -m venv .venv && source .venv/bin/activate && pip install requests
 ```
 
-> Nếu quá 40 giây chưa boot xong, dải trên cùng chuyển đỏ kèm lý do. Gần như luôn là **JIT chưa bật** — làm lại Bước 4.
+> Nếu quá 90 giây vẫn ở trạng thái khởi động, dải trên cùng chuyển đỏ kèm **bước cuối** và trạng thái JIT. Bấm **Sao chép log QEMU** rồi dán vào chat — đừng đoán.
+
+> Muốn biết lỗi nằm ở thư viện hay ở JIT mà không cần boot: tab **Thiết lập** → mục **Engine** → **Kiểm tra engine (không boot)**. Kết quả cho biết `dlopen` OK hay lỗi, `mmap RWX` (bộ nhớ thực thi cho TCG) có được cấp hay bị chặn kèm errno.
 
 > Nếu bấm **Dừng Linux**: QEMU không boot lại được trong cùng tiến trình. Vuốt Devbox khỏi đa nhiệm rồi mở lại, bật lại JIT.
 
@@ -217,7 +219,9 @@ Không cần chụp ảnh — mọi thứ copy được:
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | Bấm mở dự án, dải đỏ báo `Thiếu engine QEMU…` | IPA tải từ run cũ (trước khi nhúng engine) | Tải lại IPA ở run **Build iOS IPA** mới nhất, cài lại |
-| Dải đỏ `QEMU dừng khi khởi động…` | JIT chưa bật, hoặc dyld không load được framework | Bật JIT bằng StikDebug rồi mở lại. Nếu vẫn lỗi: **Sao chép log QEMU** và gửi |
+| Dải đỏ `QEMU gọi exit() khi khởi động…` | QEMU tự thoát trong lúc init (thiếu bộ nhớ exec, tham số, hoặc framework) | Tab **Thiết lập** → **Kiểm tra engine (không boot)**, rồi **Sao chép log QEMU** và gửi. Log giờ ghi từng bước `dlopen` → `qemu_init` → `main loop` |
+| Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | **Sao chép log QEMU**; xem dòng `stage:` cuối cùng để biết treo ở đâu |
+| Dải đỏ `iOS không cấp bộ nhớ thực thi cho QEMU…` | `mmap RWX` bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi kết quả |
 | Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
 | Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
 | Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |

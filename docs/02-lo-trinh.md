@@ -15,7 +15,7 @@
 | Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-Đã xong: run `40175851247` cho IPA 6.99 MB (SHA256 `2189ee37…`), JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1.
+Đã xong: run `40186291316` cho IPA 7.02 MB (SHA256 `bc9628a8…`), JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1.
 
 ---
 
