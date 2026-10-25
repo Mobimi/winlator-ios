@@ -229,6 +229,7 @@ struct ShellView: View {
         } else if guest.receivedBytes == 0 {
             if !engine.guestBooted {
                 strip(.yellow, "hourglass", "Máy ảo đang boot · \(engine.uptimeText)", "Lần đầu có thể 2–5 phút. Lệnh chỉ chạy sau khi getty lên.") {
+                    stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
                     stripButton("Nối lại") { reconnectConsole() }
                 }
             } else if !guest.connected {
@@ -236,16 +237,26 @@ struct ShellView: View {
                     stripButton("Nối lại") { reconnectConsole() }
                 }
             } else {
-                strip(.orange, "waveform.slash", "Console đã nối nhưng chưa có dữ liệu", "Guest đã boot mà serial im lặng — bấm Nối lại để mở lại cổng serial") {
+                strip(.orange, "waveform.slash", "Console đã nối nhưng chưa có dữ liệu", "\(heartbeatText) — bấm Nối lại để mở lại cổng serial") {
+                    stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
                     stripButton("Nối lại") { reconnectConsole() }
                 }
             }
         } else if model.silent {
-            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. Thử Nối lại hoặc Kiểm tra.") {
+            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · tự mở lại \(guest.autoRecoveries) lần.") {
                 stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
                 stripButton("Nối lại") { reconnectConsole() }
             }
         }
+    }
+
+    private var heartbeatText: String {
+        guard let alive = engine.guestAliveAt else { return "Guest chưa ghi nhịp" }
+        let seconds = Int(Date().timeIntervalSince(alive))
+        if seconds < 6 {
+            return "Guest còn sống (nhịp \(max(0, seconds))s trước)"
+        }
+        return "Guest im lặng \(seconds)s"
     }
 
     private func strip<Actions: View>(

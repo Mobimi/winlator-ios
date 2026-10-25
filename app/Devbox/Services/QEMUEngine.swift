@@ -43,6 +43,7 @@ final class QEMUEngine: ObservableObject {
     @Published private(set) var lastArguments: [String] = []
     @Published private(set) var hasBooted = false
     @Published private(set) var guestBooted = false
+    @Published private(set) var guestAliveAt: Date?
     @Published private(set) var lastStage = "chưa chạy"
 
     let consolePort = DevboxConfig.consolePort
@@ -58,6 +59,8 @@ final class QEMUEngine: ObservableObject {
     private var logTimer: Timer?
     private var watchdog: Timer?
     private var bootMonitor: Timer?
+    private var probeEarlyDone = false
+    private var probeLateDone = false
 
     fileprivate static var runningThread: pthread_t?
     fileprivate static var exitCalled = false
@@ -414,17 +417,51 @@ final class QEMUEngine: ObservableObject {
     private func startBootMonitor() {
         stopBootMonitor()
         guestBooted = false
+        guestAliveAt = nil
+        probeEarlyDone = false
+        probeLateDone = false
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
-            guard let self, self.state == .running, !self.guestBooted else { return }
+            guard let self, self.state == .running else { return }
             let marker = DevboxConfig.shareDirectory.appendingPathComponent(".ports")
-            guard FileManager.default.fileExists(atPath: marker.path) else { return }
-            self.guestBooted = true
-            let seconds = Int(Date().timeIntervalSince(self.startedAt ?? Date()))
-            Self.trace("guest: đã boot (thấy /mnt/share/.ports sau \(seconds)s)")
-            self.stopBootMonitor()
+            if let values = try? marker.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modified = values.contentModificationDate {
+                self.guestAliveAt = modified
+                if !self.guestBooted {
+                    self.guestBooted = true
+                    let seconds = Int(Date().timeIntervalSince(self.startedAt ?? Date()))
+                    Self.trace("guest: đã boot (thấy /mnt/share/.ports sau \(seconds)s)")
+                }
+            }
+            self.guestProbe()
         }
         RunLoop.main.add(timer, forMode: .common)
         bootMonitor = timer
+    }
+
+    private func guestProbe() {
+        let age = Date().timeIntervalSince(startedAt ?? Date())
+        guard age > 20 else { return }
+        let late = age > 90
+        if probeEarlyDone && (!late || probeLateDone) { return }
+        if late {
+            probeLateDone = true
+        } else {
+            probeEarlyDone = true
+        }
+        let qmp = qmpPort
+        DispatchQueue.global(qos: .utility).async {
+            let status = QMPClient.probe(port: qmp, timeout: 2)
+            let disk = QMPClient.diskReadBytes(port: qmp, timeout: 2)
+            let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
+            let openText: String
+            switch open {
+            case .some(true): openText = "có client"
+            case .some(false): openText = "không client"
+            case .none: openText = "?"
+            }
+            let diskText = disk.map { "\($0) B" } ?? "?"
+            QEMUEngine.trace("guest: t+\(Int(age))s · qmp=\(status) · đĩa đọc=\(diskText) · serial=\(openText)")
+        }
     }
 
     private func stopBootMonitor() {
@@ -432,7 +469,8 @@ final class QEMUEngine: ObservableObject {
         bootMonitor = nil
     }
 
-    private func startWatchdog() {        stopWatchdog()
+    private func startWatchdog() {
+        stopWatchdog()
         let timer = Timer(timeInterval: 90, repeats: false) { [weak self] _ in
             guard let self, self.state == .starting else { return }
             self.refreshLog()

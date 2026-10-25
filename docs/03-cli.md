@@ -16,7 +16,8 @@ Tab **Shell** là cửa nhập lệnh chính, dùng chung phiên console với t
 
 - **Gợi ý 4 lớp**: lịch sử (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git `, `npm `, `apt `, `python3 -m `, `systemctl `…), đường dẫn thật (`/mnt/share/…` đọc từ máy, `~/projects/<slug>`).
 - **Bảng kết quả**: mỗi lệnh một khối `$ lệnh` + output + trạng thái; nút ⤢ xem toàn màn hình, copy/share. Tab **Console thô** xem nguyên luồng serial.
-- **Chẩn đoán**: không có output sau 6 giây → băng đỏ với **Kiểm tra** / **Nối lại** / **Khởi động**.
+- **Chẩn đoán**: băng trạng thái nói rõ đang ở bước nào (QEMU khởi động → máy ảo boot → nối console → nhận byte đầu tiên). Gửi lệnh mà 8 giây không thấy trả lời thì app tự đóng/mở lại cổng serial (2 lần), kèm **Kiểm tra** / **Nối lại**.
+- **Ẩn bàn phím**: nút **Ẩn phím** trên hàng phím nhanh và nút **Ẩn bàn phím** trên bàn phím.
 - **↑ / ↓** gọi lại lệnh; lịch sử lưu trong `Documents/logs/shell.json` nên mở lại app vẫn còn.
 - **Snippet**: lưu lệnh hay dùng, bấm là chạy.
 - **Trạng thái**: `đã gửi` → `đang chạy` → `xong`.

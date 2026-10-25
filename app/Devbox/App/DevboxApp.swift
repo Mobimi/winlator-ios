@@ -24,6 +24,7 @@ struct DevboxApp: App {
                 appState.refreshDevice()
                 appState.startJITPolling()
                 keeper.appBecameActive()
+                GuestConsole.shared.appBecameActive()
             case .inactive:
                 keeper.appBecameInactive()
             case .background:

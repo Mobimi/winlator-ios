@@ -11,6 +11,7 @@ final class GuestConsole: ObservableObject {
     @Published private(set) var receivedBytes = 0
     @Published private(set) var lastActivity = Date.distantPast
     @Published private(set) var connectedAt: Date?
+    @Published private(set) var autoRecoveries = 0
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
@@ -21,6 +22,9 @@ final class GuestConsole: ObservableObject {
     private var retryPort: UInt16 = 0
     private var generation = 0
     private var openTries = 0
+    private var lastSendAt = Date.distantPast
+    private var bytesAtSend = 0
+    private var lastAutoRecovery = Date.distantPast
     @Published private(set) var currentLine = ""
 
     private let maxLines = 2000
@@ -41,22 +45,50 @@ final class GuestConsole: ObservableObject {
         retryPort = port
         QEMUEngine.trace("console: yêu cầu nối lại")
         hardClose()
-        reopenAfter = Date().addingTimeInterval(1.4)
+        reopenAfter = .distantPast
         let qmp = DevboxConfig.qmpPort
         DispatchQueue.global(qos: .userInitiated).async {
+            QEMUEngine.trace("console: đang kiểm tra QEMU/serial qua 127.0.0.1:\(qmp)")
             let status = QMPClient.probe(port: qmp, timeout: 2)
-            QEMUEngine.trace("qmp: \(status)")
-            let reset = QMPClient.resetConsoleChardev(qmpPort: qmp, consolePort: port, timeout: 3)
-            QEMUEngine.trace("console: chardev-change → \(reset.isEmpty ? "(không trả lời)" : reset)")
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.wantConnection else { return }
-                self.reopenAfter = .distantPast
-                if self.connection == nil && !self.connected {
+            let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
+            let disk = QMPClient.diskReadBytes(port: qmp, timeout: 2)
+            let diskText = disk.map { "\($0) B" } ?? "?"
+            QEMUEngine.trace("console: qmp=\(status) · serial=\(Self.describe(open)) · đĩa đọc=\(diskText)")
+        }
+        startRetryTimer(port: port)
+    }
+
+    static func describe(_ value: Bool?) -> String {
+        guard let value else { return "?" }
+        return value ? "có client" : "không client"
+    }
+
+    func appBecameActive() {
+        guard wantConnection, retryPort != 0 else { return }
+        let port = retryPort
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, self.wantConnection else { return }
+            guard self.connected else {
+                if self.connection == nil {
                     self.open(port: port)
+                }
+                return
+            }
+            let qmp = DevboxConfig.qmpPort
+            DispatchQueue.global(qos: .userInitiated).async {
+                let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
+                QEMUEngine.trace("console: app quay lại · serial-open = \(Self.describe(open))")
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.wantConnection, self.connected else { return }
+                    if open == false {
+                        QEMUEngine.trace("console: socket cũ đã chết, mở lại ngay")
+                        self.reconnect(port: port)
+                    } else {
+                        self.send("\r")
+                    }
                 }
             }
         }
-        startRetryTimer(port: port)
     }
 
     func reconnect() {
@@ -69,6 +101,7 @@ final class GuestConsole: ObservableObject {
         let timer = Timer(timeInterval: 1.2, repeats: true) { [weak self] _ in
             guard let self, self.wantConnection else { return }
             if self.connected {
+                self.checkSilence(port: port)
                 return
             }
             guard Date() >= self.reopenAfter else { return }
@@ -87,6 +120,19 @@ final class GuestConsole: ObservableObject {
 
     private var connectingSince: Date?
     private var reopenAfter = Date.distantPast
+
+    private func checkSilence(port: UInt16) {
+        guard lastSendAt > Date.distantPast, retryPort != 0 else { return }
+        let quiet = Date().timeIntervalSince(lastSendAt)
+        let answered = receivedBytes - bytesAtSend
+        let limit: TimeInterval = autoRecoveries == 0 ? 8 : 22
+        guard quiet > limit, answered <= 0 else { return }
+        guard autoRecoveries < 2, Date().timeIntervalSince(lastAutoRecovery) > 25 else { return }
+        autoRecoveries += 1
+        lastAutoRecovery = Date()
+        QEMUEngine.trace("console: gửi lệnh \(Int(quiet))s không thấy trả lời, tự mở lại serial (lần \(autoRecoveries))")
+        reconnect(port: port)
+    }
 
     private func hardClose() {
         generation += 1
@@ -116,11 +162,15 @@ final class GuestConsole: ObservableObject {
         }
     }
 
-    func send(_ text: String) {
+    func send(_ text: String, expectReply: Bool = true) {
         guard let data = text.data(using: .utf8) else { return }
         guard connected else {
             QEMUEngine.trace("console: bỏ qua gửi \(text.count) ký tự vì chưa nối")
             return
+        }
+        if expectReply {
+            lastSendAt = Date()
+            bytesAtSend = receivedBytes
         }
         connection?.send(content: data, completion: .contentProcessed { _ in })
     }
@@ -129,13 +179,13 @@ final class GuestConsole: ObservableObject {
         send(String(Character(Unicode.Scalar(code))))
     }
 
-    func sendLine(_ text: String) {
-        send(text + "\r")
+    func sendLine(_ text: String, expectReply: Bool = true) {
+        send(text + "\r", expectReply: expectReply)
     }
 
     func applySize(cols: Int, rows: Int) {
         guard connected, cols > 0, rows > 0 else { return }
-        sendLine("stty cols \(cols) rows \(rows) 2>/dev/null")
+        sendLine("stty cols \(cols) rows \(rows) 2>/dev/null", expectReply: false)
     }
 
     func sendKey(_ key: TerminalKey) {
@@ -167,6 +217,11 @@ final class GuestConsole: ObservableObject {
                     self.connectedAt = Date()
                     self.openTries = 0
                     QEMUEngine.trace("console: đã nối 127.0.0.1:\(port)")
+                    let qmp = DevboxConfig.qmpPort
+                    DispatchQueue.global(qos: .utility).async {
+                        let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
+                        QEMUEngine.trace("console: QEMU thấy client serial = \(Self.describe(open))")
+                    }
                 }
                 self.receive(on: candidate, generation: gen)
             case .waiting(let error):
@@ -213,6 +268,7 @@ final class GuestConsole: ObservableObject {
                     }
                     self.receivedBytes += data.count
                     self.lastActivity = Date()
+                    self.autoRecoveries = 0
                     self.consume(text)
                     if text.contains("login:") || text.contains("dev@devbox") {
                         if !self.promptSeen {

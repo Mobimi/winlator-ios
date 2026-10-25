@@ -113,7 +113,7 @@ final class ShellModel: ObservableObject {
 
     func submit(_ guest: GuestConsole) {
         guard guest.connected else {
-            silent = true
+            guest.reconnect()
             return
         }
         let command = input.trimmingCharacters(in: .whitespacesAndNewlines)

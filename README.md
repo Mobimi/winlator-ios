@@ -112,7 +112,8 @@ Tab **Shell** là nơi làm việc chính: một ô nhập lệnh gửi thẳng 
 | **Trạng thái gửi** | `đã gửi` → `đang chạy` → `xong` để biết lệnh đã tới chưa. |
 | **Sửa lỗi nhanh** | gặp `command not found: rg` → hiện chip `apt install -y ripgrep`. |
 | **Cảnh báo** | `rm -rf /`, `mkfs`, `dd if=`… phải xác nhận mới chạy. |
-| **Khi Debian không trả lời** | sau ~6 giây không có output, hiện băng đỏ **Debian không trả lời** với nút **Kiểm tra** / **Nối lại** / **Khởi động** — không còn cảnh màn hình trống mà không biết vì sao. |
+| **Khi Debian không trả lời** | băng trạng thái nói rõ đang ở bước nào: QEMU khởi động → máy ảo boot → nối console 4444 → nhận byte đầu tiên. Gửi lệnh mà 8 giây không thấy trả lời thì app **tự đóng/mở lại cổng serial** (2 lần), kèm nút **Kiểm tra** / **Nối lại**. |
+| **Ẩn bàn phím** | nút **Ẩn phím** trên hàng phím nhanh, và nút **Ẩn bàn phím** ngay trên bàn phím — không phải chạm ra ngoài màn hình. |
 | **Cổng** | danh sách cổng đang mở, mở web, copy URL, tắt cổng (`devbox-killport`). |
 | **Cài gói bổ sung** | menu ⋯ → cài `tmux`, `openssh-server`, `ripgrep`, `pkill`… ngay trong máy ảo. |
 

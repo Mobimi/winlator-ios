@@ -39,13 +39,44 @@ enum QMPClient {
         return exchange(payload, port: port, timeout: timeout)
     }
 
-    static func resetConsoleChardev(qmpPort: UInt16, consolePort: UInt16, timeout: TimeInterval = 3) -> String {
-        let change = "{\"execute\":\"chardev-change\",\"arguments\":{\"id\":\"con\",\"backend\":{\"type\":\"socket\",\"data\":{\"addr\":{\"type\":\"inet\",\"data\":{\"host\":\"127.0.0.1\",\"port\":\"\(consolePort)\"}},\"server\":true,\"wait\":false}}}}"
-        let payload = "{\"execute\":\"qmp_capabilities\"}\n" + change + "\n"
-        return exchange(payload, port: qmpPort, timeout: timeout)
+    static func chardevOpen(label: String = "con", port: UInt16, timeout: TimeInterval = 2) -> Bool? {
+        let payload = "{\"execute\":\"qmp_capabilities\"}\n{\"execute\":\"query-chardev\"}\n"
+        let reply = exchange(payload, port: port, timeout: timeout)
+        guard let labelRange = reply.range(of: "\"label\":\"\(label)\"") ?? reply.range(of: "\"label\": \"\(label)\"") else {
+            return nil
+        }
+        guard let end = reply[labelRange.lowerBound...].range(of: "}") else { return nil }
+        let entry = reply[labelRange.lowerBound..<end.lowerBound]
+        if entry.contains("\"frontend-open\":true") || entry.contains("\"frontend-open\": true") {
+            return true
+        }
+        if entry.contains("\"frontend-open\":false") || entry.contains("\"frontend-open\": false") {
+            return false
+        }
+        return nil
     }
 
+    static func diskReadBytes(port: UInt16, timeout: TimeInterval = 2) -> Int64? {
+        let payload = "{\"execute\":\"qmp_capabilities\"}\n{\"execute\":\"query-blockstats\"}\n"
+        let reply = exchange(payload, port: port, timeout: timeout)
+        var best: Int64?
+        var search = reply.startIndex..<reply.endIndex
+        while let found = reply.range(of: "\"rd_bytes\":", range: search) {
+            let tail = reply[found.upperBound...]
+            let digits = tail.prefix { $0 == " " || ($0 >= "0" && $0 <= "9") }
+            if let value = Int64(String(digits).trimmingCharacters(in: .whitespaces)) {
+                best = max(best ?? 0, value)
+            }
+            search = found.upperBound..<reply.endIndex
+        }
+        return best
+    }
+
+    private static let lock = NSLock()
+
     private static func exchange(_ payload: String, port: UInt16, timeout: TimeInterval) -> String {
+        lock.lock()
+        defer { lock.unlock() }
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return "" }
         defer { close(descriptor) }
