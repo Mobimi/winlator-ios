@@ -30,7 +30,7 @@ Image đã build thật ngày 2026-10-25 (`image/build-image.sh`, runner `ubuntu
 
 **Về mặt Python: giống PC Linux, không phải bản rút gọn.**
 
-- CPython **3.13.5** đầy đủ (stdlib, `ssl`, `sqlite3`, `zlib`, `ctypes`, `tkinter` có nhưng không có màn hình)
+- CPython **3.13.5** đầy đủ (stdlib, `ssl`, `sqlite3`, `zlib`, `ctypes`); `tkinter` **không cài sẵn** (`apt install python3-tk` được, nhưng không có màn hình để hiện cửa sổ)
 - **pip 26.2.2** lấy trực tiếp từ **PyPI**, không qua kho riêng
 - `venv`, `setuptools`, `wheel`, header dev + `gcc 14.2` → cài được cả gói chỉ có source
 - Đã bỏ marker PEP 668 → `pip install` chạy toàn cục đúng như trên PC (không phải tạo venv mới cài được)
