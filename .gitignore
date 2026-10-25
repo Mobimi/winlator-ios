@@ -14,6 +14,11 @@ app/Devbox.xcodeproj/
 *.app
 out/
 
+# Build engine QEMU
+engine/build/
+engine/sysroot/
+engine/out/
+
 # Build image Debian
 work/
 *.ext4

@@ -1,0 +1,63 @@
+name: Build QEMU engine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "engine/**"
+      - ".github/workflows/build-engine.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: macos-14
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Host tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: brew install meson ninja pkg-config glib bison
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          meson --version
+          ninja --version
+          pkg-config --version
+
+      - name: Build
+        env:
+          SDKMINVER: "17.0"
+        run: bash engine/build-ios.sh
+
+      - name: Config log
+        if: failure()
+        run: |
+          echo "--- qemu config.log ---"
+          tail -n 120 engine/build/src/qemu-*/config.log 2>/dev/null || true
+          echo "--- meson logs ---"
+          find engine/build/src -name "meson-log.txt" -exec tail -n 60 {} \; 2>/dev/null || true
+
+      - name: List output
+        if: always()
+        run: |
+          ls -la engine/out 2>/dev/null || true
+          ls -la engine/out/Frameworks 2>/dev/null || true
+          du -sh engine/sysroot 2>/dev/null || true
+
+      - name: Upload engine
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devbox-engine-ios-arm64
+          path: engine/out/
+          if-no-files-found: error
