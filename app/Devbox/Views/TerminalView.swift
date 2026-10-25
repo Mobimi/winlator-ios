@@ -74,8 +74,11 @@ struct TerminalView: View {
                 ports.stop()
             }
             .onChange(of: ports.autoOpenPort) { _, port in
-                guard let port, preview == nil else { return }
-                preview = PreviewTarget(port: port)
+                guard let port else { return }
+                if preview == nil {
+                    preview = PreviewTarget(port: port)
+                }
+                ports.autoOpenPort = nil
             }
         }
     }

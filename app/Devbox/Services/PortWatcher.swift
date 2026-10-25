@@ -14,8 +14,10 @@ final class PortWatcher: ObservableObject {
 
     func start() {
         stop()
-        known = readPorts()
-        ports = known.sorted()
+        if let initial = readPorts() {
+            known = initial
+            ports = initial.sorted()
+        }
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
             self?.tick()
         }
@@ -38,7 +40,7 @@ final class PortWatcher: ObservableObject {
     }
 
     private func tick() {
-        let current = readPorts()
+        guard let current = readPorts() else { return }
         ports = current.sorted()
         probed.formIntersection(current)
         for port in current where !known.contains(port) && !probed.contains(port) {
@@ -48,9 +50,9 @@ final class PortWatcher: ObservableObject {
         known = current
     }
 
-    private func readPorts() -> Set<Int> {
+    private func readPorts() -> Set<Int>? {
         guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            return []
+            return nil
         }
         var result: Set<Int> = []
         for line in text.split(separator: "\n") {
