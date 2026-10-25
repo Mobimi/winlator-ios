@@ -13,7 +13,10 @@ enum Diagnostics {
         lines.append("Model: \(device.model) · iOS \(device.systemVersion)")
         lines.append("RAM: \(device.physicalMemoryMB) MB · CPU: \(device.cores) nhân")
         lines.append("PID: \(device.pid) · PPID: \(device.parentPID)")
-        lines.append("proc_csflags: \(device.csFlags.map { String(format: "0x%08X", $0) } ?? "không đọc được")")
+        lines.append("proc_csflags: \(device.csFlags.map { String(format: "0x%08X", $0) } ?? "không đọc được") [\(device.csSource)]")
+        if device.csFlags == nil {
+            lines.append("errno: csops=\(device.csopsErrno) · sysctl=\(device.sysctlErrno)")
+        }
         lines.append("CS_DEBUGGED: \(device.debugged ? "BẬT" : "TẮT")")
         lines.append("P_TRACED: \(device.traced ? "CÓ" : "KHÔNG")")
         lines.append("JIT: \(jitText(device.jit))")

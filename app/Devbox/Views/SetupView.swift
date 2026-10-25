@@ -19,11 +19,11 @@ struct SetupView: View {
 
                 Section {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: app.device.jit.isGranted ? "checkmark.seal.fill" : "xmark.seal.fill")
-                            .foregroundStyle(app.device.jit.isGranted ? Color.green : Color.red)
+                        Image(systemName: jitIcon)
+                            .foregroundStyle(jitColor)
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(app.device.jit.isGranted ? "JIT đã bật" : "JIT chưa bật")
+                            Text(app.device.jit.title)
                                 .font(.headline)
                             Text(app.device.jit.detail)
                                 .font(.caption)
@@ -32,8 +32,11 @@ struct SetupView: View {
                     }
 
                     if let flags = app.device.csFlags {
-                        LabeledContent("proc_csflags", value: String(format: "0x%08X", flags))
+                        LabeledContent("proc_csflags", value: String(format: "0x%08X", flags) + " · " + app.device.csSource)
                             .font(.system(.caption, design: .monospaced))
+                    } else {
+                        LabeledContent("proc_csflags", value: "không đọc được")
+                        LabeledContent("errno", value: "csops \(app.device.csopsErrno) · sysctl \(app.device.sysctlErrno)")
                     }
 
                     LabeledContent("CS_DEBUGGED", value: app.device.debugged ? "BẬT (0x10000000)" : "TẮT")
@@ -47,7 +50,7 @@ struct SetupView: View {
                 } header: {
                     Text("JIT")
                 } footer: {
-                    Text("Nguồn thật là bit CS_DEBUGGED (0x10000000) trong proc_csflags. App tự đọc lại mỗi 4 giây khi JIT còn đỏ, nên không cần mở lại app. Nếu StikDebug báo đã bật mà vẫn đỏ: xem P_TRACED — “không” nghĩa là debugger chưa attach vào tiến trình này. JIT không cần entitlement riêng.")
+                    Text("App đọc cờ bằng csops trước, sysctl sau. iOS 18+ hay chặn sysctl.proc_csflags nên có thể ra “không xác định” dù JIT đang bật. App tự đọc lại mỗi 4 giây. Nếu StikDebug báo đã bật mà vẫn đỏ: xem P_TRACED — “không” nghĩa là debugger không còn attach vào tiến trình này. JIT không cần entitlement riêng.")
                 }
 
                 Section {
@@ -149,6 +152,22 @@ struct SetupView: View {
             .refreshable {
                 app.refreshDevice()
             }
+        }
+    }
+
+    private var jitIcon: String {
+        switch app.device.jit {
+        case .granted: return "checkmark.seal.fill"
+        case .denied: return "xmark.seal.fill"
+        case .unknown: return "questionmark.seal.fill"
+        }
+    }
+
+    private var jitColor: Color {
+        switch app.device.jit {
+        case .granted: return .green
+        case .denied: return .red
+        case .unknown: return .orange
         }
     }
 }

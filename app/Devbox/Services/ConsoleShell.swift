@@ -124,10 +124,11 @@ final class ConsoleShell: ObservableObject {
 
         append("pid \(device.pid) · ppid \(device.parentPID)", .output)
         if let flags = device.csFlags {
-            append(String(format: "sysctl.proc_csflags = 0x%08X", flags), .output)
+            append(String(format: "proc_csflags = 0x%08X", flags) + " (đọc bằng \(device.csSource))", .output)
             append("CS_DEBUGGED (0x10000000) = \(device.debugged ? "BẬT" : "TẮT")", .output)
         } else {
-            append("Không đọc được sysctl.proc_csflags.", .error)
+            append("Không đọc được cờ JIT: csops errno \(device.csopsErrno), sysctl errno \(device.sysctlErrno).", .error)
+            append("App đã thử csops trước, sysctl sau. iOS 18+ thường chặn sysctl.proc_csflags.", .info)
         }
 
         append("P_TRACED = \(device.traced ? "CÓ (debugger đang trace)" : "KHÔNG")", device.traced ? .success : .output)

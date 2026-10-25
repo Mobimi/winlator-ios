@@ -13,7 +13,7 @@ struct ProjectsView: View {
             List {
                 if !app.device.jit.isGranted {
                     Section {
-                        JITBanner()
+                        JITBanner(state: app.device.jit)
                     }
                 }
 
@@ -117,18 +117,37 @@ struct ProjectsView: View {
 }
 
 struct JITBanner: View {
+    let state: JITState
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: icon)
                 .foregroundStyle(.orange)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Chưa bật JIT")
+                Text(title)
                     .font(.subheadline.bold())
-                Text("Máy ảo Linux cần JIT. Mở tab Thiết lập để xem cách bật bằng StikDebug.")
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var icon: String {
+        if case .unknown = state { return "questionmark.circle.fill" }
+        return "exclamationmark.triangle.fill"
+    }
+
+    private var title: String {
+        if case .unknown = state { return "Chưa xác định được JIT" }
+        return "Chưa bật JIT"
+    }
+
+    private var message: String {
+        if case .unknown = state {
+            return "iOS này chặn đọc cờ JIT. Mở tab Thiết lập để xem chi tiết và errno."
+        }
+        return "Máy ảo Linux cần JIT. Mở tab Thiết lập để xem cách bật bằng StikDebug."
     }
 }
