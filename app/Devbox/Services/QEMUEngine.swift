@@ -130,7 +130,7 @@ final class QEMUEngine: ObservableObject {
 
         installExitGuard()
 
-        setStage("tạo thread QEMU")
+        stage("tạo thread QEMU")
         let worker = Thread { [weak self] in
             self?.run(dylib: dylib, arguments: arguments)
         }
@@ -350,7 +350,7 @@ final class QEMUEngine: ObservableObject {
         }
     }
 
-    private func setStage(_ text: String) {
+    private func stage(_ text: String) {
         QEMUEngine.trace("stage: \(text)")
         DispatchQueue.main.async {
             self.lastStage = text
@@ -534,7 +534,7 @@ final class QEMUEngine: ObservableObject {
         defer { traceLock.unlock() }
         guard traceFD >= 0 else { return }
         let line = "[t+\(String(format: "%.2f", elapsed))] \(message)\n"
-        var bytes = Array(line.utf8)
+        let bytes = Array(line.utf8)
         bytes.withUnsafeBufferPointer { buffer in
             guard let base = buffer.baseAddress else { return }
             _ = write(traceFD, base, buffer.count)
