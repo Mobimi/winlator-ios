@@ -6,9 +6,11 @@ final class GuestConsole: ObservableObject {
 
     @Published private(set) var lines: [String] = []
     @Published private(set) var connected = false
+    @Published private(set) var connecting = false
     @Published private(set) var lastError: String?
     @Published private(set) var receivedBytes = 0
     @Published private(set) var lastActivity = Date.distantPast
+    @Published private(set) var connectedAt: Date?
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
@@ -17,6 +19,8 @@ final class GuestConsole: ObservableObject {
     private var parser = ANSIParser()
     private var pendingCR = false
     private var retryPort: UInt16 = 0
+    private var generation = 0
+    private var openTries = 0
     @Published private(set) var currentLine = ""
 
     private let maxLines = 2000
@@ -26,24 +30,32 @@ final class GuestConsole: ObservableObject {
     func connect(port: UInt16) {
         wantConnection = true
         retryPort = port
-        if connection != nil {
-            startRetryTimer(port: port)
-            return
+        if connection == nil && !connected {
+            open(port: port)
         }
-        open(port: port)
         startRetryTimer(port: port)
     }
 
     func reconnect(port: UInt16) {
         wantConnection = true
         retryPort = port
-        parser = ANSIParser()
-        pendingCR = false
-        connection?.cancel()
-        connection = nil
-        connected = false
-        lastError = nil
-        open(port: port)
+        QEMUEngine.trace("console: yêu cầu nối lại")
+        hardClose()
+        reopenAfter = Date().addingTimeInterval(1.4)
+        let qmp = DevboxConfig.qmpPort
+        DispatchQueue.global(qos: .userInitiated).async {
+            let status = QMPClient.probe(port: qmp, timeout: 2)
+            QEMUEngine.trace("qmp: \(status)")
+            let reset = QMPClient.resetConsoleChardev(qmpPort: qmp, consolePort: port, timeout: 3)
+            QEMUEngine.trace("console: chardev-change → \(reset.isEmpty ? "(không trả lời)" : reset)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.wantConnection else { return }
+                self.reopenAfter = .distantPast
+                if self.connection == nil && !self.connected {
+                    self.open(port: port)
+                }
+            }
+        }
         startRetryTimer(port: port)
     }
 
@@ -54,22 +66,45 @@ final class GuestConsole: ObservableObject {
 
     private func startRetryTimer(port: UInt16) {
         stopRetryTimer()
-        let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
-            guard let self, self.wantConnection, !self.connected else { return }
-            self.open(port: port)
+        let timer = Timer(timeInterval: 1.2, repeats: true) { [weak self] _ in
+            guard let self, self.wantConnection else { return }
+            if self.connected {
+                return
+            }
+            guard Date() >= self.reopenAfter else { return }
+            if self.connection == nil {
+                self.open(port: port)
+            } else if self.connecting, let started = self.connectingSince,
+                      Date().timeIntervalSince(started) > 6 {
+                QEMUEngine.trace("console: kết nối treo quá 6s, tạo lại")
+                self.hardClose()
+                self.open(port: port)
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         retryTimer = timer
     }
 
+    private var connectingSince: Date?
+    private var reopenAfter = Date.distantPast
+
+    private func hardClose() {
+        generation += 1
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
+        connection = nil
+        parser = ANSIParser()
+        pendingCR = false
+        connected = false
+        connecting = false
+        connectingSince = nil
+        lastError = nil
+    }
+
     func disconnect() {
         wantConnection = false
         stopRetryTimer()
-        connection?.cancel()
-        connection = nil
-        DispatchQueue.main.async {
-            self.connected = false
-        }
+        hardClose()
     }
 
     func clear() {
@@ -83,6 +118,10 @@ final class GuestConsole: ObservableObject {
 
     func send(_ text: String) {
         guard let data = text.data(using: .utf8) else { return }
+        guard connected else {
+            QEMUEngine.trace("console: bỏ qua gửi \(text.count) ký tự vì chưa nối")
+            return
+        }
         connection?.send(content: data, completion: .contentProcessed { _ in })
     }
 
@@ -105,55 +144,99 @@ final class GuestConsole: ObservableObject {
 
     private func open(port: UInt16) {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else { return }
+        generation += 1
+        let gen = generation
+        connection?.stateUpdateHandler = nil
         connection?.cancel()
-        let connection = NWConnection(host: NWEndpoint.Host("127.0.0.1"), port: endpointPort, using: .tcp)
-        connection.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+        connection = nil
+        openTries += 1
+        connecting = true
+        connectingSince = Date()
+        QEMUEngine.trace("console: mở 127.0.0.1:\(port) (lần \(openTries))")
+        let candidate = NWConnection(host: NWEndpoint.Host("127.0.0.1"), port: endpointPort, using: .tcp)
+        candidate.stateUpdateHandler = { [weak self] state in
+            guard let self, self.generation == gen else { return }
             switch state {
             case .ready:
                 DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
                     self.connected = true
+                    self.connecting = false
+                    self.connectingSince = nil
                     self.lastError = nil
+                    self.connectedAt = Date()
+                    self.openTries = 0
+                    QEMUEngine.trace("console: đã nối 127.0.0.1:\(port)")
                 }
-                self.receive(on: connection)
+                self.receive(on: candidate, generation: gen)
+            case .waiting(let error):
+                DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
+                    self.lastError = error.localizedDescription
+                    QEMUEngine.trace("console: chờ \(error.localizedDescription)")
+                }
             case .failed(let error):
                 DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
                     self.connected = false
+                    self.connecting = false
+                    self.connectingSince = nil
                     self.lastError = error.localizedDescription
+                    self.connection = nil
+                    QEMUEngine.trace("console: lỗi \(error.localizedDescription)")
                 }
-                connection.cancel()
+                candidate.cancel()
             case .cancelled:
                 DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
                     self.connected = false
+                    self.connecting = false
                 }
             default:
                 break
             }
         }
-        connection.start(queue: queue)
-        self.connection = connection
+        candidate.start(queue: queue)
+        connection = candidate
     }
 
-    private func receive(on connection: NWConnection) {
+    private func receive(on connection: NWConnection, generation gen: Int) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
+            guard let self, self.generation == gen else { return }
             if let data, !data.isEmpty {
                 let text = String(decoding: data, as: UTF8.self)
                 DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
+                    if self.receivedBytes == 0 {
+                        let sample = text.prefix(160).replacingOccurrences(of: "\n", with: " ")
+                        QEMUEngine.trace("console: byte đầu tiên · \"\(sample)\"")
+                    }
                     self.receivedBytes += data.count
                     self.lastActivity = Date()
                     self.consume(text)
+                    if text.contains("login:") || text.contains("dev@devbox") {
+                        if !self.promptSeen {
+                            self.promptSeen = true
+                            QEMUEngine.trace("console: thấy prompt guest sau \(Int(Date().timeIntervalSince(self.connectedAt ?? Date())))s")
+                        }
+                    }
                 }
             }
             if isComplete || error != nil {
                 DispatchQueue.main.async {
+                    guard self.generation == gen else { return }
                     self.connected = false
+                    self.connecting = false
+                    self.connection = nil
+                    QEMUEngine.trace("console: đóng kết nối \(isComplete ? "EOF" : (error?.localizedDescription ?? ""))")
                 }
                 return
             }
-            self.receive(on: connection)
+            self.receive(on: connection, generation: gen)
         }
     }
+
+    private var promptSeen = false
 
     private func consume(_ text: String) {
         for character in text {

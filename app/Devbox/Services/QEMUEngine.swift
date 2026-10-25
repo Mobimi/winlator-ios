@@ -42,6 +42,7 @@ final class QEMUEngine: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published private(set) var lastArguments: [String] = []
     @Published private(set) var hasBooted = false
+    @Published private(set) var guestBooted = false
     @Published private(set) var lastStage = "chưa chạy"
 
     let consolePort = DevboxConfig.consolePort
@@ -56,6 +57,7 @@ final class QEMUEngine: ObservableObject {
     private var logURL: URL?
     private var logTimer: Timer?
     private var watchdog: Timer?
+    private var bootMonitor: Timer?
 
     fileprivate static var runningThread: pthread_t?
     fileprivate static var exitCalled = false
@@ -144,6 +146,7 @@ final class QEMUEngine: ObservableObject {
         worker.start()
         startLogTimer()
         startWatchdog()
+        startBootMonitor()
     }
 
     func stop() {
@@ -408,8 +411,28 @@ final class QEMUEngine: ObservableObject {
         logTimer = nil
     }
 
-    private func startWatchdog() {
-        stopWatchdog()
+    private func startBootMonitor() {
+        stopBootMonitor()
+        guestBooted = false
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self, self.state == .running, !self.guestBooted else { return }
+            let marker = DevboxConfig.shareDirectory.appendingPathComponent(".ports")
+            guard FileManager.default.fileExists(atPath: marker.path) else { return }
+            self.guestBooted = true
+            let seconds = Int(Date().timeIntervalSince(self.startedAt ?? Date()))
+            Self.trace("guest: đã boot (thấy /mnt/share/.ports sau \(seconds)s)")
+            self.stopBootMonitor()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        bootMonitor = timer
+    }
+
+    private func stopBootMonitor() {
+        bootMonitor?.invalidate()
+        bootMonitor = nil
+    }
+
+    private func startWatchdog() {        stopWatchdog()
         let timer = Timer(timeInterval: 90, repeats: false) { [weak self] _ in
             guard let self, self.state == .starting else { return }
             self.refreshLog()
@@ -577,7 +600,7 @@ final class QEMUEngine: ObservableObject {
         traceFD = open(url.path, O_CREAT | O_WRONLY | O_APPEND, 0o644)
     }
 
-    fileprivate static func trace(_ message: String) {
+    static func trace(_ message: String) {
         let elapsed = ProcessInfo.processInfo.systemUptime - timeBase
         traceLock.lock()
         defer { traceLock.unlock() }

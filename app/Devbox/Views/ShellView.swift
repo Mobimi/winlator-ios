@@ -56,6 +56,10 @@ struct ShellView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Ẩn bàn phím") { focused = false }
+                }
             }
             .background(
                 GeometryReader { proxy in
@@ -105,6 +109,8 @@ struct ShellView: View {
             .onChange(of: engine.state) { _, state in
                 if case .running = state {
                     ports.start()
+                    guest.connect(port: engine.consolePort)
+                    applySize(lastSize)
                 }
             }
             .onChange(of: ports.autoOpenPort) { _, port in
@@ -148,9 +154,7 @@ struct ShellView: View {
     private var output: some View {
         VStack(spacing: 0) {
             outputHeader
-            if model.silent {
-                silentBar
-            }
+            statusStrip
             if showRaw {
                 rawConsole
             } else {
@@ -197,49 +201,98 @@ struct ShellView: View {
         .buttonStyle(.plain)
     }
 
-    private var silentBar: some View {
+    @ViewBuilder
+    private var statusStrip: some View {
+        if !images.isInstalled {
+            strip(.orange, "exclamationmark.triangle.fill", "Chưa cài Debian", "Vào tab Thiết lập để tải image") {
+                EmptyView()
+            }
+        } else if !engine.isRunning {
+            switch engine.state {
+            case .starting:
+                strip(.yellow, "hourglass", "Đang khởi động QEMU · \(engine.lastStage)", "Thường 10–40 giây, lần đầu lâu hơn") {
+                    EmptyView()
+                }
+            case .failed(let message):
+                strip(.red, "xmark.octagon.fill", "QEMU lỗi", message) {
+                    EmptyView()
+                }
+            case .stopped:
+                strip(.orange, "stop.circle.fill", "Linux đã dừng", "Vuốt app khỏi đa nhiệm rồi mở lại để boot lại") {
+                    EmptyView()
+                }
+            default:
+                strip(.gray, "moon.zzz.fill", "Linux chưa chạy", app.device.jit == .denied ? "Cần bật JIT bằng StikDebug" : "Bấm Khởi động để boot máy ảo") {
+                    stripButton("Khởi động") { startEngine() }
+                }
+            }
+        } else if guest.receivedBytes == 0 {
+            if !engine.guestBooted {
+                strip(.yellow, "hourglass", "Máy ảo đang boot · \(engine.uptimeText)", "Lần đầu có thể 2–5 phút. Lệnh chỉ chạy sau khi getty lên.") {
+                    stripButton("Nối lại") { reconnectConsole() }
+                }
+            } else if !guest.connected {
+                strip(.orange, "bolt.slash.fill", "Guest đã boot nhưng chưa nối console", guest.lastError ?? (guest.connecting ? "Đang thử kết nối…" : "Bấm Nối lại")) {
+                    stripButton("Nối lại") { reconnectConsole() }
+                }
+            } else {
+                strip(.orange, "waveform.slash", "Console đã nối nhưng chưa có dữ liệu", "Guest đã boot mà serial im lặng — bấm Nối lại để mở lại cổng serial") {
+                    stripButton("Nối lại") { reconnectConsole() }
+                }
+            }
+        } else if model.silent {
+            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. Thử Nối lại hoặc Kiểm tra.") {
+                stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
+                stripButton("Nối lại") { reconnectConsole() }
+            }
+        }
+    }
+
+    private func strip<Actions: View>(
+        _ color: Color,
+        _ icon: String,
+        _ title: String,
+        _ detail: String,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.octagon.fill")
+            Image(systemName: icon)
                 .font(.system(size: 12))
-                .foregroundStyle(.red)
+                .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Debian không trả lời")
+                Text(title)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(engine.isRunning ? "Console có thể treo. Bấm Nối lại." : "QEMU chưa chạy hoặc JIT chưa bật.")
+                    .lineLimit(1)
+                Text(detail)
                     .font(.system(size: 9))
-                    .foregroundStyle(Color.white.opacity(0.6))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                    .lineLimit(2)
             }
-            Spacer()
-            if engine.isRunning && guest.connected {
-                Button("Kiểm tra") {
-                    model.runDiagnostics(guest: guest)
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .buttonStyle(.bordered)
-                Button("Nối lại") {
-                    guest.reconnect(port: engine.consolePort)
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .buttonStyle(.borderedProminent)
-            } else if engine.isRunning {
-                Button("Nối lại") {
-                    guest.reconnect(port: engine.consolePort)
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .buttonStyle(.borderedProminent)
-            } else {
-                Button("Khởi động") {
-                    startEngine()
-                }
-                .font(.system(size: 10, weight: .semibold))
-                .buttonStyle(.borderedProminent)
-                .disabled(!images.isInstalled || !engine.canStart || app.device.jit == .denied)
+            Spacer(minLength: 4)
+            HStack(spacing: 6) {
+                actions()
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.red.opacity(0.12))
+        .background(color.opacity(0.13))
+    }
+
+    private func stripButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.16), in: Capsule())
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reconnectConsole() {
+        guest.reconnect(port: engine.consolePort)
     }
 
     private var resultsList: some View {
@@ -450,6 +503,21 @@ struct ShellView: View {
                 }
                 key("Esc") { guest.sendKey(.escape) }
                 key("Ctrl-C") { guest.sendKey(.controlC) }
+                Button {
+                    focused = false
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                            .font(.system(size: 10))
+                        Text("Ẩn phím")
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                }
+                .buttonStyle(.plain)
                 key("cd ~") {
                     model.input = "cd ~"
                     model.submit(guest)
@@ -734,21 +802,27 @@ struct ShellView: View {
         if !images.isInstalled {
             return "CHƯA CÀI DEBIAN · vào tab Thiết lập"
         }
-        if !guest.connected {
-            switch engine.state {
-            case .starting:
-                return "ĐANG KHỞI ĐỘNG · \(engine.lastStage)"
-            case .running:
-                return "LINUX ĐANG CHẠY · đang nối console…"
-            case .failed(let message):
-                return message.uppercased()
-            case .stopped:
-                return "LINUX ĐÃ DỪNG · mở lại app để boot lại"
-            case .idle:
-                return app.device.jit == .denied ? "CẦN BẬT JIT BẰNG STIKDEBUG" : "LINUX CHƯA CHẠY"
+        switch engine.state {
+        case .starting:
+            return "ĐANG KHỞI ĐỘNG · \(engine.lastStage)"
+        case .failed(let message):
+            return message.uppercased()
+        case .stopped:
+            return "LINUX ĐÃ DỪNG · mở lại app để boot lại"
+        case .running:
+            if guest.receivedBytes == 0 {
+                if engine.guestBooted {
+                    return "GUEST ĐÃ BOOT · console chưa có dữ liệu"
+                }
+                return "ĐANG BOOT · \(engine.uptimeText)"
             }
+            if !guest.connected {
+                return "LINUX CHẠY · chưa nối console 4444"
+            }
+            return "dev@devbox · \(model.cwd)"
+        case .idle:
+            return app.device.jit == .denied ? "CẦN BẬT JIT BẰNG STIKDEBUG" : "LINUX CHƯA CHẠY"
         }
-        return "dev@devbox · \(model.cwd)"
     }
 
     private var emptyText: String {
@@ -799,11 +873,9 @@ struct ShellView: View {
 
     private func boot() {
         model.attach(guest)
-        if !guest.connected {
-            guest.connect(port: engine.consolePort)
-        }
         if engine.isRunning {
             ports.start()
+            guest.connect(port: engine.consolePort)
             applySize(lastSize)
         }
         startEngine()

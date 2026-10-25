@@ -83,6 +83,11 @@ struct TerminalView: View {
                     enterProject()
                 }
             }
+            .onChange(of: engine.state) { _, state in
+                if case .running = state {
+                    guest.connect(port: engine.consolePort)
+                }
+            }
             .onChange(of: guest.receivedBytes) { _, bytes in
                 if bytes > 0 {
                     enterProject()
@@ -285,10 +290,12 @@ struct TerminalView: View {
     }
 
     private func boot() {
-        guest.connect(port: engine.consolePort)
         ports.start()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             inputFocused = true
+        }
+        if engine.isRunning {
+            guest.connect(port: engine.consolePort)
         }
         if guest.connected {
             enterProject()

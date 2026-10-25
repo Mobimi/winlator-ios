@@ -334,13 +334,13 @@ final class ShellModel: ObservableObject {
         guard status == .waiting || status == .running else { return }
         let idle = Date().timeIntervalSince(guest.lastActivity)
         let elapsed = Date().timeIntervalSince(entries[index].startedAt)
-        guard elapsed > 6, idle > 6 else { return }
+        guard elapsed > 10, idle > 10 else { return }
         if entries[index].output.isEmpty {
             entries[index].status = .silent
             entries[index].finishedAt = Date()
             silent = true
             state = .idle
-        } else if idle > 25 {
+        } else if idle > 30 {
             entries[index].status = .silent
             entries[index].finishedAt = Date()
             silent = true
