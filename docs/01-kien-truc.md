@@ -81,6 +81,8 @@ Ghi chú kỹ thuật:
 | Resize terminal | Không hỗ trợ ở M1; chữ tự xuống dòng theo bề rộng màn hình. |
 | Đăng nhập | `serial-getty@ttyAMA0` với `--autologin dev`. Không mật khẩu. |
 | 9p | Chỉ dùng cho `share/.ports` và trao đổi file; dự án nằm trên ext4 trong image. |
+| Mạng trong guest | systemd-networkd cấu hình tĩnh `eth0 = 10.0.2.15/24`, gateway `10.0.2.2`, DNS `10.0.2.3` — đúng topology slirp, không cần DHCP. |
+| Console không phải terminal grid | Parser theo dòng: `vim`/`htop`/`less` hiển thị lộn xộn. Chưa gửi SIGWINCH. |
 | Port forward | Cố định 3000/5173/8080 lúc boot (bind lỗi sẽ làm QEMU thoát, nên giữ ít cổng). Dev server phải nghe đúng một trong ba cổng này. |
 | Đóng gói | CI build QEMU cho iOS, đổi mỗi `.dylib` thành `.framework`, sửa `install_name` sang `@rpath/<name>.framework/<name>`, phát hành zip ở release `engine-v1`; workflow IPA tải zip và nhúng vào `Payload/Devbox.app/Frameworks`. |
 | Kích thước | `qemu-aarch64-softmmu` ~27 MB + glib/gio/pixman/slirp/zstd ~5 MB. IPA ~7 MB. |
@@ -115,16 +117,19 @@ Quyết định quan trọng:
 
 | Thành phần | Thực tế |
 |---|---|
-| Base | Debian 13 (trixie) ARM64 minimal, glibc. ext4 **1.87 GB**, zstd **394 MB**. |
+| Base | Debian 13 (trixie) ARM64 minimal, glibc. ext4 **1.87 GB**, zstd **396 MB**. |
 | Kernel | `6.12.113+deb13-arm64` |
 | Python | **3.13.5**, pip **26.2.2**, kèm venv, numpy/pandas/requests |
 | Node | **22.23.4**, npm **10.9.9**, npx |
 | Build | `build-essential`, `pkg-config` |
-| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`, `ripgrep` |
+| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip`, `ripgrep`, `iproute2`, `procps`, `ping` |
+| Mạng | systemd-networkd cấu hình tĩnh `eth0 = 10.0.2.15/24`, gateway `10.0.2.2`, DNS `10.0.2.3` (slirp) |
 | Locale | `en_US.UTF-8` |
 | Phát hành | Release `img-v1`: `devbox-rootfs.ext4.zst`, `vmlinuz`, `initrd.img`, `manifest.json`, `SHA256SUMS` |
 
 App tải khoảng 480 MB (ba file), giải nén ra 1.87 GB. Cần khoảng 3 GB trống. Tải một lần, sau đó boot offline.
+
+Đã kiểm chứng bằng `Test image boot` (QEMU TCG trên runner ARM64): prompt sau **62 giây**, `python3 -V` → 3.13.5, `node -v` → v22.23.4, `npm -v` → 10.9.9, `mountpoint /mnt/share` OK, `ip addr` → 10.0.2.15, `urlopen('https://pypi.org/simple/')` → 200, `http.server 5173` được forward ra host, `poweroff` sạch.
 
 ---
 
@@ -134,7 +139,7 @@ App tải khoảng 480 MB (ba file), giải nén ra 1.87 GB. Cần khoảng 3 GB
 
 | Tác vụ | Thời gian |
 |---|---|
-| Boot đến prompt | 30–90 giây (TCG, lần đầu chậm nhất) |
+| Boot đến prompt | 30–120 giây (TCG; đo 62 giây trên runner CI) |
 | `python3 -c "print(1)"` | 0.3–1 s |
 | `node -v` | 1–2.5 s |
 | `npm install express` | 30–80 s |

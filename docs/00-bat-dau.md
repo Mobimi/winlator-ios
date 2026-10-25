@@ -26,17 +26,21 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 ## Bước 1 — Lấy IPA (không cần build)
 
-Repo đã ở trên GitHub: `https://github.com/Mobimi/winlator-ios`. Code đã đẩy lên rồi, **không cần GitHub Desktop**.
+**Cách nhanh nhất (không cần đăng nhập GitHub):**
 
-1. Mở `https://github.com/Mobimi/winlator-ios/actions` trên điện thoại hoặc PC.
+Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
+
+File khoảng 7 MB, SHA256 `dbec4ede…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
+
+**Cách khác (qua Artifacts):**
+
+1. Mở `https://github.com/Mobimi/winlator-ios/actions`.
 2. Chọn workflow **Build iOS IPA** ở cột trái.
 3. Chọn lần chạy **mới nhất có dấu ✅ xanh**.
-4. Kéo xuống mục **Artifacts** → tải **Devbox-unsigned-ipa** (cần đăng nhập GitHub).
-5. Giải nén file zip → được `Devbox-unsigned.ipa` (khoảng 7 MB).
+4. Kéo xuống **Artifacts** → tải **Devbox-unsigned-ipa** (cần đăng nhập GitHub).
+5. Giải nén → `Devbox-unsigned.ipa`.
 
-> Artifact của GitHub Actions chỉ giữ **90 ngày**. Nếu không còn, bấm **Run workflow** để build lại (3–6 phút).
-
-Nếu ❌: bấm vào bước đỏ, copy log gửi mình. Đừng tự sửa.
+Nếu workflow ❌: bấm vào bước đỏ, copy log gửi mình. Đừng tự sửa.
 
 ---
 
@@ -125,6 +129,8 @@ Thử thật: bấm Home vài phút rồi quay lại — Devbox vẫn `Đang gi�
 2. Cần khoảng **3 GB trống**. Giữ app mở; app tự chống khoá màn hình trong lúc tải.
 3. App tải lần lượt `vmlinuz` (36 MB) → `initrd.img` (35 MB) → `rootfs.ext4.zst` (394 MB), kiểm SHA256 từng file rồi giải nén zstd ngay trên máy. Trạng thái chạy qua: `Đang tải…` → `Đang kiểm tra SHA256…` → `Đang giải nén…` → `Image sẵn sàng`.
 4. Thời gian tuỳ mạng, thường 5–15 phút. Lỗi mạng thì bấm lại (file tải lại từ đầu, không resume).
+
+> Image này đã được boot thử tự động trong GitHub Actions (`Test image boot`): vào prompt sau 62 giây, `python3`/`node`/`npm`/`git`/`gcc` chạy đúng, có mạng, và `http://127.0.0.1:5173` từ ngoài vào được. Nếu máy bạn không lên được prompt thì lỗi ở phía app/JIT, không phải image.
 
 Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Python 3.13.5`, `Node 22.23.4 · npm 10.9.9`.
 

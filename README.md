@@ -7,7 +7,9 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 
 > **Trạng thái thật (2026-10-25):** engine QEMU đã build cho iOS và nhúng trong IPA, image Debian 13 đã phát hành, app đã có luồng tải image → boot → terminal. **Chưa test trên máy thật** — bước tiếp theo là cài IPA và chạy thử.
 >
-> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 6.99 MB (SHA256 `2189ee37…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 1.87 GB (zstd 394 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4.
+> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 6.99 MB (SHA256 `dbec4ede…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 1.87 GB (zstd 396 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4.
+>
+> **Image đã boot thật trong CI** (`Test image boot`): vào prompt sau **62 giây** bằng TCG, `python3`/`node`/`npm`/`git`/`gcc` chạy đúng, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 
 ---
 
@@ -131,6 +133,8 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] Pipeline build image Debian 13 ARM64 — 394 MB nén, Python/Node/npm chạy thật
 [x] Engine QEMU 10.0.12 (UTM fork) build cho iOS arm64, đóng gói framework, phát hành `engine-v1`
 [x] App tải image từ release `img-v1`, kiểm SHA256, giải nén zstd tại chỗ
+[x] Image boot thật trong CI: prompt sau 62 giây, python/node/npm/git/gcc OK, mạng ra PyPI OK
+[x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
 [x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Chạy nền: `UIBackgroundModes=audio` + audio im lặng (công tắc trong Thiết lập, lệnh `bg`)
 [ ] Cài app lên iPhone 12 Pro Max và test boot          ← bước của bạn
