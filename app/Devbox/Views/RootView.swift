@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     enum Tab {
         case projects
+        case shell
         case setup
     }
 
@@ -13,6 +14,10 @@ struct RootView: View {
             ProjectsView()
                 .tabItem { Label("Dự án", systemImage: "folder") }
                 .tag(Tab.projects)
+
+            ShellView()
+                .tabItem { Label("Shell", systemImage: "terminal") }
+                .tag(Tab.shell)
 
             SetupView()
                 .tabItem { Label("Thiết lập", systemImage: "wrench.and.screwdriver") }

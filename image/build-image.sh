@@ -94,6 +94,8 @@ export DEBIAN_FRONTEND=noninteractive
 export LANG=C.UTF-8
 
 apt-get update -qq
+printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+chmod 755 /usr/sbin/policy-rc.d
 apt-get install -y -qq --no-install-recommends \
   python3 python3-venv python3-pip python3-dev \
   build-essential pkg-config cmake \
@@ -102,8 +104,10 @@ apt-get install -y -qq --no-install-recommends \
   libjpeg-dev libpng-dev libfreetype6-dev libpq-dev \
   git curl wget nano less htop unzip xz-utils ca-certificates gnupg \
   iproute2 procps iputils-ping \
+  tmux openssh-server ripgrep psmisc lsof tree jq vim-tiny zip \
   locales sudo bash \
   linux-image-arm64
+rm -f /usr/sbin/policy-rc.d
 
 cat > /etc/pip.conf <<'EOF'
 [global]
@@ -204,11 +208,45 @@ mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/portwatch.service \
   /etc/systemd/system/multi-user.target.wants/portwatch.service
 
+cat > /usr/local/bin/devbox-killport <<'EOF'
+#!/bin/bash
+port="${1:-}"
+[ -z "$port" ] && exit 1
+hex="$(printf '%04X' "$port")"
+pids="$(awk -v h="$hex" 'NR > 1 { split($2, a, ":"); if (a[2] == h && $4 == "0A") print $10 }' \
+  /proc/net/tcp /proc/net/tcp6 2>/dev/null | sort -u)"
+[ -z "$pids" ] && exit 0
+for pid in $pids; do
+  kill "$pid" 2>/dev/null || true
+done
+exit 0
+EOF
+chmod 755 /usr/local/bin/devbox-killport
+
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/devbox.conf <<'EOF'
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+PasswordAuthentication yes
+PermitRootLogin no
+AllowUsers dev
+UseDNS no
+PrintMotd no
+EOF
+ssh-keygen -A
+ln -sf /lib/systemd/system/ssh.service \
+  /etc/systemd/system/multi-user.target.wants/ssh.service
+
 cat > /home/dev/.bashrc <<'EOF'
 export PS1='\[\e[32m\]dev@devbox\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ '
 export LANG=en_US.UTF-8
+export TERM=xterm-256color
 export MAKEFLAGS="-j4"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
+alias ll='ls -alF'
+alias ..='cd ..'
+alias gs='git status'
 cd /home/dev/projects 2>/dev/null || true
 EOF
 chown dev:dev /home/dev/.bashrc

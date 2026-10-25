@@ -8,6 +8,7 @@ final class GuestConsole: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var lastError: String?
     @Published private(set) var receivedBytes = 0
+    @Published private(set) var lastActivity = Date.distantPast
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
@@ -66,6 +67,15 @@ final class GuestConsole: ObservableObject {
         send(String(Character(Unicode.Scalar(code))))
     }
 
+    func sendLine(_ text: String) {
+        send(text + "\r")
+    }
+
+    func applySize(cols: Int, rows: Int) {
+        guard connected, cols > 0, rows > 0 else { return }
+        sendLine("stty cols \(cols) rows \(rows) 2>/dev/null")
+    }
+
     func sendKey(_ key: TerminalKey) {
         send(key.sequence)
     }
@@ -108,6 +118,7 @@ final class GuestConsole: ObservableObject {
                 let text = String(decoding: data, as: UTF8.self)
                 DispatchQueue.main.async {
                     self.receivedBytes += data.count
+                    self.lastActivity = Date()
                     self.consume(text)
                 }
             }
@@ -184,6 +195,12 @@ final class GuestConsole: ObservableObject {
 
     var rows: [ConsoleRow] {
         displayLines.enumerated().map { ConsoleRow(id: $0.offset, text: $0.element) }
+    }
+
+    func tail(_ count: Int) -> [ConsoleRow] {
+        guard count > 0 else { return [] }
+        let all = rows
+        return Array(all.suffix(count))
     }
 }
 
