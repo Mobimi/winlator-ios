@@ -34,7 +34,7 @@ args = [
     "-drive", "if=virtio,format=raw,cache=writeback,file=" + os.path.join(IMAGE, "rootfs.ext4"),
     "-virtfs", "local,path=%s,mount_tag=share,security_model=none,multidevs=remap" % SHARE,
     "-netdev", "user,id=n0,hostfwd=tcp:127.0.0.1:5173-:5173",
-    "-device", "virtio-net-pci,netdev=n0",
+    "-device", "virtio-net-pci,netdev=n0,romfile=",
     "-object", "rng-random,filename=/dev/urandom,id=rng0",
     "-device", "virtio-rng-pci,rng=rng0",
     "-display", "none",
@@ -78,6 +78,10 @@ try:
     run("npm -v", r"\d+\.\d+\.\d+")
     run("git --version", r"git version 2\.")
     run("gcc --version", r"gcc \(Debian")
+    run("tmux -V", r"tmux \d")
+    run("rg --version | head -n1", r"ripgrep")
+    run("ss -ltn | grep -q ':22 ' && echo SSH-OK", r"SSH-OK")
+    run("devbox-killport 65530 && echo KILLPORT-OK", r"KILLPORT-OK")
     run("mountpoint /mnt/share", r"is a mountpoint")
     run("df -h / | tail -n1", r"/dev/vda")
     run("ip -4 -o -c=never addr show eth0", r"inet 10\.0\.2\.15")

@@ -43,6 +43,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Boot test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm python3-pexpect curl zstd
+          rm -rf boottest
+          mkdir -p boottest
+          zstd -d -q -f out/devbox-rootfs.ext4.zst -o boottest/rootfs.ext4
+          cp out/vmlinuz out/initrd.img boottest/
+          python3 image/boot_test.py boottest
+
       - name: Publish image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

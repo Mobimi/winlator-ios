@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7 MB, SHA256 `a724b2a7…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
+File khoảng 7.2 MB, SHA256 `8a0c11d2…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
 
 **Cách khác (qua Artifacts):**
 
@@ -138,10 +138,11 @@ Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Py
 
 ## Bước 7 — Boot Linux lần đầu
 
-1. Tab **Dự án** → mở một dự án bất kỳ (hoặc tạo mới).
-2. App tự gọi QEMU. Dải trên cùng hiện `ĐANG KHỞI ĐỘNG · <bước cuối>` (vd. `dlopen engine`, `gọi qemu_init`).
-3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm Gửi.
-4. Bàn phím có thêm hàng phím **Esc / Tab / Ctrl-C / Ctrl-D / ← ↑ ↓ →** cho lệnh cần.
+1. Tab **Shell** (hoặc mở một dự án ở tab **Dự án**).
+2. Tab Shell tự gọi QEMU. Dải trên cùng hiện `ĐANG KHỞI ĐỘNG · <bước cuối>` (vd. `dlopen engine`, `gọi qemu_init`).
+3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm mũi tên gửi.
+4. Gợi ý hiện ngay trên bàn phím: bấm để điền, `Tab` để lấy gợi ý đầu. Gõ `git ` sẽ thấy `status`, `commit`, `push`…; gõ `cd /mnt/share/` sẽ thấy file thật trong thư mục share.
+5. Hàng phím **↑ ↓ / Tab / Esc / Ctrl-C / cd ~ / pwd** ở trên ô nhập.
 
 Test nhanh, gõ từng dòng:
 
@@ -186,7 +187,21 @@ npm create vite@latest web -- --template vanilla
 cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại. Cổng khác ba cổng trên sẽ không vào được (QEMU chỉ forward ba cổng này).
+Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại. Tab **Shell → icon mạng** cũng có danh sách đó, kèm nút **Copy URL** và **Tắt cổng**.
+
+App forward sẵn 15 cổng: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222 (SSH). Cổng khác phải đổi về một trong các cổng này.
+
+### Muốn terminal "xịn" hơn (vim, htop, chia đôi màn hình)
+
+Bật SSH trong máy ảo: tab **Shell** → menu **⋯** → **Cài gói bổ sung (tmux/ssh/rg)**.
+
+Rồi mở **Blink Shell** hoặc **Termius**, gõ:
+
+```
+ssh dev@127.0.0.1 -p 2222
+```
+
+Mật khẩu: `dev`. Khi đó bạn có terminal grid thật, `vim`/`htop`/`tmux` chạy đúng, copy/paste và bàn phím ngoài đầy đủ.
 
 ---
 

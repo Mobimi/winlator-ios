@@ -8,7 +8,22 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 |---|---|
 | **Hiện tại (25/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Chưa test trên máy thật tại thời điểm viết. |
 | **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
-| **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn. Dùng lệnh không tương tác. |
+| **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn trong tab Shell. Bật SSH (menu ⋯ → Cài gói bổ sung) rồi dùng Blink/Termius nếu cần TUI đầy đủ. |
+
+## Tab Shell — cách gõ lệnh
+
+Tab **Shell** là cửa nhập lệnh chính, dùng chung phiên console với tab Terminal:
+
+- **Gợi ý 4 lớp**: lịch sử (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git `, `npm `, `apt `, `python3 -m `, `systemctl `…), đường dẫn thật (`/mnt/share/…` đọc từ máy, `~/projects/<slug>`).
+- **↑ / ↓** gọi lại lệnh; lịch sử lưu trong `Documents/logs/shell.json` nên mở lại app vẫn còn.
+- **Snippet**: lưu lệnh hay dùng, bấm là chạy.
+- **Trạng thái**: `đã gửi` → `đang chạy` → `xong`.
+- **Sửa lỗi**: `command not found: rg` → chip `apt install -y ripgrep`.
+- **Cảnh báo**: `rm -rf /`, `mkfs`, `dd if=`, fork bomb → hộp thoại xác nhận.
+- **Cổng**: xem/mở/copy URL/tắt cổng đang mở.
+- **stty tự động**: app gửi `stty cols/rows` đúng bề rộng màn hình, gửi lại khi xoay máy.
+
+Chỉ có **một** console serial, nên Shell và Terminal nhìn cùng một phiên bash. Shell để gõ, Terminal để xem output dài.
 
 CLI là phần **dễ** của kiến trúc này: QEMU lo giả lập CPU, CLI chỉ cần stdin/stdout và syscall. Không cần GPU. Phần khó là boot máy ảo và nối terminal — không phải chạy lệnh.
 
@@ -97,7 +112,8 @@ jupyter lab --no-browser --ip=0.0.0.0 --port 8888
 - `uvicorn` / `flask run` / `npm run dev` → web preview tự mở trong app (cổng 3000/5173/8080)
 - `gcc` biên dịch C nhỏ, `make` dự án vừa
 - `curl` gọi API, `sqlite3` (qua Python, hoặc `apt install sqlite3`)
-- `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (`apt install` được)
+- `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (đã cài sẵn `tmux`, `openssh-server`, `ripgrep`, `jq`, `tree`, `vim-tiny`; còn lại `apt install` được)
+- SSH vào chính máy ảo từ Blink/Termius: `ssh dev@127.0.0.1 -p 2222` (mật khẩu `dev`) → terminal grid đầy đủ, `vim`/`htop` chạy đúng
 
 ### Chạy được nhưng chậm
 

@@ -61,7 +61,7 @@ App `dlopen` framework `Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-s
 -append "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0" \
 -drive if=virtio,format=raw,cache=writeback,file=<image>/rootfs.ext4 \
 -virtfs local,path=<Documents>/Devbox/share,mount_tag=share,security_model=none,multidevs=remap \
--netdev user,id=n0,hostfwd=tcp:127.0.0.1:8080-:8080,hostfwd=tcp:127.0.0.1:3000-:3000,hostfwd=tcp:127.0.0.1:5173-:5173 \
+-netdev user,id=n0,hostfwd=tcp:127.0.0.1:3000-:3000,...,hostfwd=tcp:127.0.0.1:2222-:22 \
 -device virtio-net-pci,netdev=n0,romfile= \
 -object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 \
 -chardev socket,id=con,host=127.0.0.1,port=4444,server=on,wait=off -serial chardev:con \
@@ -75,6 +75,11 @@ Ghi chú kỹ thuật:
 |---|---|
 | Không spawn được process | Nhúng QEMU dưới dạng `.framework`, gọi trực tiếp `qemu_init`/`qemu_main_loop`/`qemu_cleanup`. `atexit` guard gọi `pthread_exit` nếu QEMU gọi `exit()`, tránh chết cả app. |
 | Console | QEMU `-serial chardev` mở TCP `127.0.0.1:4444`; app nối bằng `NWConnection` và giữ kết nối suốt đời engine (ngắt sẽ làm getty nhận hangup). |
+| Cổng web | Forward cố định 15 cổng lúc boot: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222→22 (SSH). QEMU không thêm được hostfwd sau khi chạy. |
+| Tab Shell | Dùng chung console 4444. Gợi ý lệnh tính trên máy (`CommandSuggestions.swift`): lịch sử có trọng số theo thư mục (`Documents/logs/shell.json`), từ điển lệnh + lệnh con, và đường dẫn thật (`/mnt/share` đọc từ `Documents/Devbox/share`, `~/projects` đọc từ `Documents/Projects`). Không gọi mạng. |
+| stty | Sau khi nối console và mỗi lần đổi kích thước, app gửi `stty cols N rows M` để bash xuống dòng đúng bề rộng. Serial không có ioctl cửa sổ nên đây là cách duy nhất. |
+| Tắt cổng | `devbox-killport <port>` đọc `/proc/net/tcp{,6}`, tìm inode LISTEN rồi `kill` PID tương ứng; fallback `fuser -k`. |
+| SSH | Image có `openssh-server` (cổng 22, user `dev`, mật khẩu `dev`, chỉ bind trong máy ảo; ra ngoài qua 2222). Dùng Blink/Termius để có terminal grid thật. Image cũ cài bổ sung bằng menu ⋯ trong tab Shell. |
 | Card mạng | Engine build bằng `--disable-install-blobs` nên không có `efi-virtio.rom`; QEMU mặc định gắn ROM PXE cho `virtio-net-pci` và chết với `failed to find romfile "efi-virtio.rom"`. Truyền `romfile=` rỗng để bỏ ROM — kernel đã được nạp bằng `-kernel` nên không cần PXE. |
 | Tắt máy an toàn | App gửi `quit` qua QMP `127.0.0.1:4445`. `qemu_main_loop` trả về → `qemu_cleanup` → state `.stopped`. |
 | Boot lại | QEMU không reentrant: mỗi tiến trình chỉ boot một lần. Dừng rồi muốn chạy tiếp thì thoát hẳn app và mở lại. |
