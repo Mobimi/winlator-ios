@@ -82,10 +82,10 @@ objc_link_args = ['-arch', '$ARCH', '-isysroot', '$SDKROOT', '-L$SYSROOT/lib', '
 default_library = 'shared'
 
 [binaries]
-c = ['$CC']
-cpp = ['$CXX']
-objc = ['$OBJCC']
-objcpp = ['$OBJCC']
+c = ['$CLANG', '-target', '$TARGET']
+cpp = ['$CLANGXX', '-target', '$TARGET']
+objc = ['$CLANG', '-target', '$TARGET']
+objcpp = ['$CLANGXX', '-target', '$TARGET']
 ar = ['$AR']
 nm = ['$NM']
 ranlib = ['$RANLIB']
@@ -163,7 +163,8 @@ log "SDK $SDKROOT | target $TARGET | $NCPU jobs"
 
 LIBFFI_FILE="$(fetch "$LIBFFI_URL" "$LIBFFI_SHA")"
 LIBFFI_DIR="$(unpack "$LIBFFI_FILE")"
-autotools_build "$LIBFFI_DIR" --enable-static --enable-shared
+autotools_build "$LIBFFI_DIR" --enable-static --enable-shared --disable-builddir
+[ -f "$SYSROOT/lib/pkgconfig/libffi.pc" ] || die "libffi did not install libffi.pc"
 
 GLIB_FILE="$(fetch "$GLIB_URL" "$GLIB_SHA")"
 GLIB_DIR="$(unpack "$GLIB_FILE")"
@@ -178,6 +179,7 @@ meson_build "$GLIB_DIR" \
     -Dsysprof=disabled \
     -Ddocumentation=false \
     -Dglib_debug=disabled
+[ -f "$SYSROOT/lib/pkgconfig/glib-2.0.pc" ] || die "glib did not install glib-2.0.pc"
 
 PIXMAN_FILE="$(fetch "$PIXMAN_URL" "$PIXMAN_SHA")"
 PIXMAN_DIR="$(unpack "$PIXMAN_FILE")"
@@ -187,6 +189,7 @@ if [ ! -f "$PIXMAN_DIR/.devbox-patched" ]; then
     touch "$PIXMAN_DIR/.devbox-patched"
 fi
 autotools_build "$PIXMAN_DIR" --disable-libpng --disable-gtk
+[ -f "$SYSROOT/lib/pkgconfig/pixman-1.pc" ] || die "pixman did not install pixman-1.pc"
 
 QEMU_FILE="$(fetch "$QEMU_URL" "$QEMU_SHA")"
 QEMU_DIR="$(unpack "$QEMU_FILE")"
