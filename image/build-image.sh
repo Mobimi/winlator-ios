@@ -104,7 +104,7 @@ apt-get install -y -qq --no-install-recommends \
   libjpeg-dev libpng-dev libfreetype6-dev libpq-dev \
   git curl wget nano less htop unzip xz-utils ca-certificates gnupg \
   iproute2 procps iputils-ping \
-  tmux openssh-server ripgrep psmisc lsof tree jq vim-tiny zip \
+  tmux openssh-server ripgrep psmisc lsof tree jq vim-tiny zip python-is-python3 \
   locales sudo bash \
   linux-image-arm64
 rm -f /usr/sbin/policy-rc.d
@@ -247,6 +247,8 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 alias ll='ls -alF'
 alias ..='cd ..'
 alias gs='git status'
+alias python=python3
+alias pip=pip3
 cd /home/dev/projects 2>/dev/null || true
 EOF
 chown dev:dev /home/dev/.bashrc

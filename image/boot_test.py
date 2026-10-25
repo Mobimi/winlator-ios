@@ -74,6 +74,7 @@ try:
     child.expect("READY-2", timeout=60)
 
     run("python3 -V", r"Python 3\.13\.\d+")
+    run("python --version 2>&1", r"Python 3\.13\.\d+")
     run("node -v", r"v22\.\d+\.\d+")
     run("npm -v", r"\d+\.\d+\.\d+")
     run("git --version", r"git version 2\.")

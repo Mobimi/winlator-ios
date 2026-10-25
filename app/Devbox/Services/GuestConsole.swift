@@ -15,7 +15,9 @@ final class GuestConsole: ObservableObject {
     private var retryTimer: Timer?
     private var wantConnection = false
     private var parser = ANSIParser()
-    @Published private var currentLine = ""
+    private var pendingCR = false
+    private var retryPort: UInt16 = 0
+    @Published private(set) var currentLine = ""
 
     private let maxLines = 2000
 
@@ -23,12 +25,31 @@ final class GuestConsole: ObservableObject {
 
     func connect(port: UInt16) {
         wantConnection = true
+        retryPort = port
         if connection != nil {
             startRetryTimer(port: port)
             return
         }
         open(port: port)
         startRetryTimer(port: port)
+    }
+
+    func reconnect(port: UInt16) {
+        wantConnection = true
+        retryPort = port
+        parser = ANSIParser()
+        pendingCR = false
+        connection?.cancel()
+        connection = nil
+        connected = false
+        lastError = nil
+        open(port: port)
+        startRetryTimer(port: port)
+    }
+
+    func reconnect() {
+        guard retryPort != 0 else { return }
+        reconnect(port: retryPort)
     }
 
     private func startRetryTimer(port: UInt16) {
@@ -55,6 +76,8 @@ final class GuestConsole: ObservableObject {
         DispatchQueue.main.async {
             self.lines = []
             self.currentLine = ""
+            self.pendingCR = false
+            self.parser = ANSIParser()
         }
     }
 
@@ -133,35 +156,30 @@ final class GuestConsole: ObservableObject {
     }
 
     private func consume(_ text: String) {
-        let characters = Array(text)
-        var index = 0
-        while index < characters.count {
-            let character = characters[index]
-            index += 1
+        for character in text {
             if parser.isInsideSequence {
                 parser.feed(character)
                 continue
+            }
+            if pendingCR {
+                if character == "\n" {
+                    pendingCR = false
+                    endLine()
+                    continue
+                }
+                if character == "\r" {
+                    continue
+                }
+                pendingCR = false
+                currentLine = ""
             }
             switch character {
             case "\u{1B}":
                 parser.begin()
             case "\r":
-                if index < characters.count, characters[index] == "\n" {
-                    index += 1
-                    lines.append(currentLine)
-                    currentLine = ""
-                    if lines.count > maxLines {
-                        lines.removeFirst(lines.count - maxLines)
-                    }
-                } else {
-                    currentLine = ""
-                }
+                pendingCR = true
             case "\n":
-                lines.append(currentLine)
-                currentLine = ""
-                if lines.count > maxLines {
-                    lines.removeFirst(lines.count - maxLines)
-                }
+                endLine()
             case "\u{8}":
                 if !currentLine.isEmpty {
                     currentLine.removeLast()
@@ -177,6 +195,14 @@ final class GuestConsole: ObservableObject {
         }
         if currentLine.count > 4000 {
             currentLine = String(currentLine.suffix(4000))
+        }
+    }
+
+    private func endLine() {
+        lines.append(currentLine)
+        currentLine = ""
+        if lines.count > maxLines {
+            lines.removeFirst(lines.count - maxLines)
         }
     }
 

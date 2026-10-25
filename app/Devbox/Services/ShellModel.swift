@@ -1,6 +1,32 @@
 import Foundation
 import Combine
 
+struct ShellEntry: Identifiable {
+    enum Status: Equatable {
+        case waiting
+        case running
+        case done
+        case silent
+
+        var label: String {
+            switch self {
+            case .waiting: return "đã gửi · chờ trả lời"
+            case .running: return "đang chạy"
+            case .done: return "xong"
+            case .silent: return "không thấy trả lời"
+            }
+        }
+    }
+
+    let id = UUID()
+    var command: String
+    var note: String?
+    var output: [String] = []
+    var status: Status = .waiting
+    var startedAt = Date()
+    var finishedAt: Date?
+}
+
 final class ShellModel: ObservableObject {
     enum SendState: Equatable {
         case idle
@@ -21,6 +47,8 @@ final class ShellModel: ObservableObject {
     @Published var input = ""
     @Published private(set) var suggestions: [CommandSuggestion] = []
     @Published private(set) var state: SendState = .idle
+    @Published private(set) var entries: [ShellEntry] = []
+    @Published private(set) var silent = false
     @Published private(set) var lastCommand: String?
     @Published private(set) var history: [String] = []
     @Published private(set) var snippets: [String] = []
@@ -31,9 +59,19 @@ final class ShellModel: ObservableObject {
     private let store = SuggestionStore.shared
     private var storeSink: Set<AnyCancellable> = []
     private var consoleSink: AnyCancellable?
-    private var settle: Timer?
+    private var promptSink: AnyCancellable?
+    private var monitor: Timer?
     private var historyIndex: Int?
     private var draft = ""
+    private var consumed = 0
+
+    var transcriptText: String {
+        entries.map { entry in
+            let head = "$ " + entry.command
+            guard !entry.output.isEmpty else { return head }
+            return head + "\n" + entry.output.joined(separator: "\n")
+        }.joined(separator: "\n\n")
+    }
 
     init() {
         history = store.recent
@@ -49,14 +87,24 @@ final class ShellModel: ObservableObject {
     }
 
     deinit {
-        settle?.invalidate()
+        monitor?.invalidate()
     }
 
     func attach(_ guest: GuestConsole) {
+        guard consoleSink == nil else { return }
+        consumed = guest.lines.count
         consoleSink = guest.$lines
-            .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] lines in self?.activity(lines: lines) }
+        promptSink = guest.$currentLine
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] line in self?.promptChanged(line) }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self, weak guest] _ in
+            guard let self, let guest else { return }
+            self.tick(guest)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        monitor = timer
     }
 
     func refresh() {
@@ -64,7 +112,10 @@ final class ShellModel: ObservableObject {
     }
 
     func submit(_ guest: GuestConsole) {
-        guard guest.connected else { return }
+        guard guest.connected else {
+            silent = true
+            return
+        }
         let command = input.trimmingCharacters(in: .whitespacesAndNewlines)
         input = ""
         historyIndex = nil
@@ -141,9 +192,8 @@ final class ShellModel: ObservableObject {
 
     func kill(port: Int, guest: GuestConsole) {
         guard guest.connected else { return }
-        guest.sendLine("fuser -k \(port)/tcp 2>/dev/null; devbox-killport \(port) 2>/dev/null; true")
-        state = .sent
-        settleNow()
+        begin(display: "Tắt cổng \(port)", note: "cổng \(port)", guest: guest,
+              line: "fuser -k \(port)/tcp 2>/dev/null; devbox-killport \(port) 2>/dev/null; true")
     }
 
     func installExtras(guest: GuestConsole) {
@@ -152,10 +202,14 @@ final class ShellModel: ObservableObject {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let script = directory.appendingPathComponent("devbox-extra.sh")
         try? Self.extraScript.write(to: script, atomically: true, encoding: .utf8)
-        guest.sendLine("sudo bash /mnt/share/devbox-extra.sh")
-        lastCommand = "cài gói bổ sung"
-        state = .sent
-        settleNow()
+        begin(display: "Cài gói bổ sung", note: "tmux/ssh/rg", guest: guest,
+              line: "sudo bash /mnt/share/devbox-extra.sh")
+    }
+
+    func runDiagnostics(guest: GuestConsole) {
+        guard guest.connected else { return }
+        begin(display: "Kiểm tra console", note: "chẩn đoán", guest: guest,
+              line: "echo DEVBOX-PING; whoami; pwd; python3 -V; node -v")
     }
 
     private static let extraScript = """
@@ -163,7 +217,7 @@ final class ShellModel: ObservableObject {
     set -e
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y --no-install-recommends tmux openssh-server ripgrep psmisc lsof tree jq zip
+    apt-get install -y --no-install-recommends tmux openssh-server ripgrep psmisc lsof tree jq zip python-is-python3
     cat > /usr/local/bin/devbox-killport <<'KILLPORT'
     #!/bin/bash
     port="${1:-}"
@@ -195,8 +249,11 @@ final class ShellModel: ObservableObject {
 
     func clear(guest: GuestConsole) {
         guest.clear()
+        entries = []
         state = .idle
         fix = nil
+        silent = false
+        consumed = 0
     }
 
     func applySize(cols: Int, rows: Int, guest: GuestConsole) {
@@ -204,43 +261,101 @@ final class ShellModel: ObservableObject {
         guest.applySize(cols: cols, rows: rows)
     }
 
-    private func deliver(_ command: String, guest: GuestConsole) {
+    private func deliver(_ command: String, guest: GuestConsole, note: String? = nil) {
         store.record(command, dir: cwd)
         lastCommand = command
         fix = nil
         input = ""
         state = .sent
+        entries.append(ShellEntry(command: command, note: note))
+        if entries.count > 60 {
+            entries.removeFirst(entries.count - 60)
+        }
+        silent = false
+        consumed = guest.lines.count
         guest.sendLine(command)
         updateCwd(with: command)
         refresh()
-        settle?.invalidate()
-        settle = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
-            guard let self, self.state == .sent else { return }
-            self.state = .running
-        }
+    }
+
+    private func begin(display: String, note: String?, guest: GuestConsole, line: String) {
+        lastCommand = display
+        state = .sent
+        entries.append(ShellEntry(command: display, note: note))
+        silent = false
+        consumed = guest.lines.count
+        guest.sendLine(line)
+        refresh()
     }
 
     private func activity(lines: [String]) {
-        if state == .sent || state == .running {
-            state = .running
+        if lines.count < consumed {
+            consumed = 0
         }
+        let start = min(consumed, lines.count)
+        let fresh = Array(lines[start...])
+        consumed = lines.count
         if let name = CommandCatalog.missingCommand(in: lines) {
             fix = store.fixSuggestion(for: name)
         }
-        settle?.invalidate()
-        settle = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            if self.state == .running || self.state == .sent {
-                self.state = .done
+        guard !fresh.isEmpty, let index = entries.indices.last else { return }
+        for raw in fresh {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if entries[index].output.isEmpty, echoesCommand(trimmed, command: entries[index].command) { continue }
+            if isPromptOnly(trimmed) { continue }
+            entries[index].output.append(raw)
+            if entries[index].output.count > 400 {
+                entries[index].output.removeFirst(entries[index].output.count - 400)
             }
+        }
+        if entries[index].status == .silent || entries[index].status == .waiting {
+            entries[index].status = .running
+            state = .running
+        }
+        if silent && !entries[index].output.isEmpty {
+            silent = false
         }
     }
 
-    private func settleNow() {
-        settle?.invalidate()
-        settle = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
-            self?.state = .done
+    private func promptChanged(_ line: String) {
+        guard !line.isEmpty, let index = entries.indices.last else { return }
+        guard line.hasSuffix("$ ") || line.hasSuffix("# ") else { return }
+        guard entries[index].status != .done else { return }
+        entries[index].status = .done
+        entries[index].finishedAt = Date()
+        state = .done
+        silent = false
+    }
+
+    private func tick(_ guest: GuestConsole) {
+        guard let index = entries.indices.last else { return }
+        let status = entries[index].status
+        guard status == .waiting || status == .running else { return }
+        let idle = Date().timeIntervalSince(guest.lastActivity)
+        let elapsed = Date().timeIntervalSince(entries[index].startedAt)
+        guard elapsed > 6, idle > 6 else { return }
+        if entries[index].output.isEmpty {
+            entries[index].status = .silent
+            entries[index].finishedAt = Date()
+            silent = true
+            state = .idle
+        } else if idle > 25 {
+            entries[index].status = .silent
+            entries[index].finishedAt = Date()
+            silent = true
+            state = .idle
         }
+    }
+
+    private func echoesCommand(_ line: String, command: String) -> Bool {
+        guard line.contains(command) else { return false }
+        return line.contains("$") || line.contains("#")
+    }
+
+    private func isPromptOnly(_ line: String) -> Bool {
+        guard line.hasPrefix("dev@devbox") || line.hasPrefix("root@devbox") else { return false }
+        return line.hasSuffix("$") || line.hasSuffix("#") || line.hasSuffix("$ ") || line.hasSuffix("# ")
     }
 
     private func updateCwd(with command: String) {

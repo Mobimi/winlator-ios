@@ -271,7 +271,7 @@ enum CommandCatalog {
         "gcc": "build-essential",
         "g++": "build-essential",
         "ffmpeg": "ffmpeg",
-        "python": "python3",
+        "python": "python-is-python3",
         "pip": "python3-pip",
         "node": "nodejs",
         "npm": "npm",
@@ -422,10 +422,10 @@ final class SuggestionStore: ObservableObject {
     func fixSuggestion(for name: String) -> CommandSuggestion? {
         guard let package = CommandCatalog.packageFor[name] else { return nil }
         return CommandSuggestion(
-            text: "apt install \(package)",
-            detail: "cài gói chứa \(name)",
+            text: "cài \(package)",
+            detail: "thiếu \(name) · thiếu gói \(package)",
             kind: .fix,
-            fill: "apt install -y \(package)"
+            fill: "sudo apt install -y \(package)"
         )
     }
 

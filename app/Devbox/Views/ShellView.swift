@@ -13,6 +13,8 @@ struct ShellView: View {
     @State private var preview: PreviewTarget?
     @State private var lastSize = CGSize.zero
     @State private var copied = false
+    @State private var showRaw = false
+    @State private var showFull = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -78,6 +80,9 @@ struct ShellView: View {
             .sheet(item: $preview) { target in
                 WebPreviewView(target: target)
             }
+            .sheet(isPresented: $showFull) {
+                fullResultsSheet
+            }
             .alert(
                 "Lệnh có thể phá máy ảo",
                 isPresented: Binding(
@@ -141,14 +146,206 @@ struct ShellView: View {
     }
 
     private var output: some View {
+        VStack(spacing: 0) {
+            outputHeader
+            if model.silent {
+                silentBar
+            }
+            if showRaw {
+                rawConsole
+            } else {
+                resultsList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.06, green: 0.06, blue: 0.07))
+        .layoutPriority(1)
+    }
+
+    private var outputHeader: some View {
+        HStack(spacing: 8) {
+            modeButton("Kết quả", active: !showRaw) { showRaw = false }
+            modeButton("Console thô", active: showRaw) { showRaw = true }
+            Spacer()
+            Text("\(guest.receivedBytes) B")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.35))
+            Button {
+                showFull = true
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .disabled(model.entries.isEmpty)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(red: 0.08, green: 0.08, blue: 0.09))
+    }
+
+    private func modeButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: active ? .semibold : .regular, design: .monospaced))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(active ? Color.green.opacity(0.22) : Color.clear, in: Capsule())
+                .foregroundStyle(active ? Color.green : Color.white.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var silentBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.octagon.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Debian không trả lời")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(engine.isRunning ? "Console có thể treo. Bấm Nối lại." : "QEMU chưa chạy hoặc JIT chưa bật.")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
+            Spacer()
+            if engine.isRunning && guest.connected {
+                Button("Kiểm tra") {
+                    model.runDiagnostics(guest: guest)
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.bordered)
+                Button("Nối lại") {
+                    guest.reconnect(port: engine.consolePort)
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.borderedProminent)
+            } else if engine.isRunning {
+                Button("Nối lại") {
+                    guest.reconnect(port: engine.consolePort)
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Khởi động") {
+                    startEngine()
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.borderedProminent)
+                .disabled(!images.isInstalled || !engine.canStart || app.device.jit == .denied)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.red.opacity(0.12))
+    }
+
+    private var resultsList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if model.entries.isEmpty {
+                        Text(emptyText)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                            .textSelection(.enabled)
+                            .padding(.top, 10)
+                    }
+                    ForEach(model.entries) { entry in
+                        entryView(entry)
+                            .id(entry.id)
+                    }
+                }
+                .padding(12)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: model.entries.count) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onChange(of: model.entries.last?.output.count) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onChange(of: model.entries.last?.status) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onAppear { scrollToBottom(proxy) }
+        }
+    }
+
+    private func entryView(_ entry: ShellEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 6) {
+                Text("$")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.green)
+                Text(entry.command)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .textSelection(.enabled)
+                Spacer(minLength: 4)
+                Text(entry.note ?? entry.status.label)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(entryColor(entry))
+                    .lineLimit(1)
+            }
+            if entry.output.isEmpty {
+                Text(emptyEntryText(entry))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.45))
+            } else {
+                ForEach(Array(entry.output.enumerated()), id: \.offset) { _, line in
+                    Text(line.isEmpty ? " " : line)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color(white: 0.86))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = ([entry.command] + entry.output).joined(separator: "\n")
+                copied = true
+            } label: {
+                Label("Copy kết quả", systemImage: "doc.on.doc")
+            }
+            Button {
+                sheet = .ports
+            } label: {
+                Label("Cổng đang mở", systemImage: "network")
+            }
+        }
+    }
+
+    private func emptyEntryText(_ entry: ShellEntry) -> String {
+        switch entry.status {
+        case .waiting, .running: return "đang chờ Debian trả lời…"
+        case .done: return "(lệnh không in ra gì)"
+        case .silent: return "Debian không trả lời. Bấm Nối lại ở trên."
+        }
+    }
+
+    private func entryColor(_ entry: ShellEntry) -> Color {
+        switch entry.status {
+        case .waiting: return .yellow
+        case .running: return .orange
+        case .done: return .green
+        case .silent: return .red
+        }
+    }
+
+    private var rawConsole: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if guest.rows.isEmpty {
-                        Text(emptyText)
+                        Text("Console chưa nhận được dữ liệu nào.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(Color.white.opacity(0.5))
-                            .textSelection(.enabled)
                             .padding(.top, 12)
                     }
                     ForEach(guest.tail(300)) { row in
@@ -162,6 +359,7 @@ struct ShellView: View {
                 }
                 .padding(10)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: guest.rows.count) { _, _ in
                 scrollToEnd(proxy)
             }
@@ -464,6 +662,41 @@ struct ShellView: View {
         }
     }
 
+    private var fullResultsSheet: some View {
+        NavigationStack {
+            ZStack {
+                Color(red: 0.06, green: 0.06, blue: 0.07)
+                    .ignoresSafeArea()
+                ScrollView {
+                    Text(model.transcriptText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color(white: 0.9))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+            }
+            .navigationTitle("Toàn bộ kết quả")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Đóng") { showFull = false }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        UIPasteboard.general.string = model.transcriptText
+                        copied = true
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    ShareLink(item: model.transcriptText) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+    }
+
     private func key(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
@@ -520,12 +753,12 @@ struct ShellView: View {
 
     private var emptyText: String {
         if !images.isInstalled {
-            return "Chưa có Debian.\nVào tab Thiết lập để tải image (khoảng 400 MB)."
+            return "Chưa có Debian.\nVào tab Thiết lập để tải image (khoảng 500 MB)."
         }
         if !guest.connected {
             return "Chưa nối console.\nBấm Khởi động ở trên, hoặc mở một dự án để QEMU boot."
         }
-        return "Đã nối console."
+        return "Gõ lệnh ở ô dưới rồi bấm mũi tên xanh.\nKết quả hiện ngay tại đây.\n\nVí dụ: python3 -V · node -v · ls -la"
     }
 
     private func suggestionColor(_ kind: CommandSuggestion.Kind) -> Color {
@@ -541,6 +774,13 @@ struct ShellView: View {
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
         guard let last = guest.rows.last?.id else { return }
         withAnimation(.linear(duration: 0.1)) {
+            proxy.scrollTo(last, anchor: .bottom)
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        guard let last = model.entries.last?.id else { return }
+        withAnimation(.linear(duration: 0.12)) {
             proxy.scrollTo(last, anchor: .bottom)
         }
     }

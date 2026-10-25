@@ -106,11 +106,13 @@ Tab **Shell** là nơi làm việc chính: một ô nhập lệnh gửi thẳng 
 |---|---|
 | **Gợi ý 4 lớp** | lịch sử bạn đã gõ (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git ` → status/add/commit/push…, `npm ` → run dev/build…), và đường dẫn thật (`/mnt/share/…` đọc trực tiếp từ máy, `~/projects/<dự án>`). |
 | **Chip gợi ý** | hiện ngay trên bàn phím; bấm để điền, `Tab` để lấy gợi ý đầu, `Tab` lần nữa thì gửi Tab thật cho bash. |
+| **Bảng kết quả** | mỗi lệnh là một khối riêng: `$ lệnh` + output + trạng thái (`đang chờ` → `đang chạy` → `xong`). Nút ⤢ mở toàn màn hình, copy/share được. Tab **Console thô** để xem luồng serial gốc khi cần chẩn đoán. |
 | **Lịch sử bền** | ↑ / ↓ như terminal thật; lưu vào `Documents/logs/shell.json`, tắt app vẫn còn. |
 | **Snippet** | lưu sẵn `npm run dev`, `python3 -m http.server 8080`… bấm là chạy. |
 | **Trạng thái gửi** | `đã gửi` → `đang chạy` → `xong` để biết lệnh đã tới chưa. |
 | **Sửa lỗi nhanh** | gặp `command not found: rg` → hiện chip `apt install -y ripgrep`. |
 | **Cảnh báo** | `rm -rf /`, `mkfs`, `dd if=`… phải xác nhận mới chạy. |
+| **Khi Debian không trả lời** | sau ~6 giây không có output, hiện băng đỏ **Debian không trả lời** với nút **Kiểm tra** / **Nối lại** / **Khởi động** — không còn cảnh màn hình trống mà không biết vì sao. |
 | **Cổng** | danh sách cổng đang mở, mở web, copy URL, tắt cổng (`devbox-killport`). |
 | **Cài gói bổ sung** | menu ⋯ → cài `tmux`, `openssh-server`, `ripgrep`, `pkill`… ngay trong máy ảo. |
 

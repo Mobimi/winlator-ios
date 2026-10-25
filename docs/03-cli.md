@@ -15,6 +15,8 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 Tab **Shell** là cửa nhập lệnh chính, dùng chung phiên console với tab Terminal:
 
 - **Gợi ý 4 lớp**: lịch sử (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git `, `npm `, `apt `, `python3 -m `, `systemctl `…), đường dẫn thật (`/mnt/share/…` đọc từ máy, `~/projects/<slug>`).
+- **Bảng kết quả**: mỗi lệnh một khối `$ lệnh` + output + trạng thái; nút ⤢ xem toàn màn hình, copy/share. Tab **Console thô** xem nguyên luồng serial.
+- **Chẩn đoán**: không có output sau 6 giây → băng đỏ với **Kiểm tra** / **Nối lại** / **Khởi động**.
 - **↑ / ↓** gọi lại lệnh; lịch sử lưu trong `Documents/logs/shell.json` nên mở lại app vẫn còn.
 - **Snippet**: lưu lệnh hay dùng, bấm là chạy.
 - **Trạng thái**: `đã gửi` → `đang chạy` → `xong`.

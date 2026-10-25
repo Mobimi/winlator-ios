@@ -140,7 +140,7 @@ Sau khi xong, mục đó hiện `Debian trixie · ARM64`, `Kernel 6.12.113`, `Py
 
 1. Tab **Shell** (hoặc mở một dự án ở tab **Dự án**).
 2. Tab Shell tự gọi QEMU. Dải trên cùng hiện `ĐANG KHỞI ĐỘNG · <bước cuối>` (vd. `dlopen engine`, `gọi qemu_init`).
-3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm mũi tên gửi.
+3. Khi console hiện `dev@devbox:~$` là xong. Gõ lệnh vào ô dưới cùng, bấm mũi tên gửi. Kết quả hiện thành từng khối trong bảng **Kết quả** ở trên (không phải chờ chữ chạy loạn như terminal thô).
 4. Gợi ý hiện ngay trên bàn phím: bấm để điền, `Tab` để lấy gợi ý đầu. Gõ `git ` sẽ thấy `status`, `commit`, `push`…; gõ `cd /mnt/share/` sẽ thấy file thật trong thư mục share.
 5. Hàng phím **↑ ↓ / Tab / Esc / Ctrl-C / cd ~ / pwd** ở trên ô nhập.
 
@@ -162,6 +162,10 @@ mkdir demo && cd demo
 npm init -y && npm install express
 python3 -m venv .venv && source .venv/bin/activate && pip install requests
 ```
+
+> Nếu gõ lệnh mà sau ~6 giây vẫn không thấy kết quả, băng đỏ **Debian không trả lời** hiện ra: bấm **Kiểm tra** (chạy `whoami`, `python3 -V`…) hoặc **Nối lại** (nối lại console 4444). Tab **Console thô** hiện số byte đã nhận — nếu là `0 B` thì app chưa nối được vào máy ảo, không phải lỗi lệnh.
+
+> Image mới có sẵn `python` = `python3`. Image cũ chỉ có `python3`; muốn dùng `python` thì chạy `sudo apt install -y python-is-python3` (hoặc bấm chip gợi ý khi gặp `command not found: python`).
 
 > Nếu quá 90 giây vẫn ở trạng thái khởi động, dải trên cùng chuyển đỏ kèm **bước cuối** và trạng thái JIT. Bấm **Sao chép log QEMU** rồi dán vào chat — đừng đoán.
 
