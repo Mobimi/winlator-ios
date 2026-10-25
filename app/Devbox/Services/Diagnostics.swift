@@ -22,14 +22,18 @@ enum Diagnostics {
         lines.append("P_TRACED: \(device.traced ? "CÓ" : "KHÔNG")")
         lines.append("JIT: \(jitText(device.jit))")
         lines.append("Giữ nền: \(keeper.stateText) · \(keeper.category) · \(keeper.uptimeText)")
+        lines.append("RAM trống cho app: \(DeviceProbe.availableMemoryMB()) MB · app dùng \(DeviceProbe.footprintMB()) MB")
         lines.append("UIBackgroundModes: \(backgroundModes())")
         lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
+        lines.append("Bước cuối: \(engine.lastStage)")
         lines.append("Image: \(imageState())")
         if !engine.logLines.isEmpty {
             lines.append("QEMU log:")
-            for line in engine.logLines.suffix(10) {
+            for line in engine.logLines.suffix(40) {
                 lines.append("  \(line)")
             }
+        } else {
+            lines.append("QEMU log: (trống)")
         }
         if let error = keeper.lastError {
             lines.append("Lỗi nền: \(error)")

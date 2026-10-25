@@ -150,7 +150,7 @@ struct TerminalView: View {
             }
             return engine.hasBooted ? "LINUX ĐÃ DỪNG · mở lại app để boot lại" : "LINUX DỪNG"
         case .starting:
-            return "ĐANG BOOT DEBIAN… (TCG, có thể 30–60 giây)"
+            return "ĐANG KHỞI ĐỘNG · \(engine.lastStage)"
         case .running:
             return guest.connected ? "LINUX ĐANG CHẠY · console đã nối" : "LINUX ĐANG CHẠY · đang nối console…"
         case .failed(let message):

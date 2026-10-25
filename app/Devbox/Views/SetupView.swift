@@ -10,6 +10,8 @@ struct SetupView: View {
     @AppStorage("devbox.keepRunning") private var keepRunning = true
     @State private var copied = false
     @State private var preview: PreviewTarget?
+    @State private var engineCheck: String?
+    @State private var logCopied = false
 
     var body: some View {
         NavigationStack {
@@ -149,6 +151,7 @@ struct SetupView: View {
                     }
                     LabeledContent("Console", value: "127.0.0.1:\(engine.consolePort)")
                     LabeledContent("QMP", value: "127.0.0.1:\(engine.qmpPort)")
+                    LabeledContent("Bước cuối", value: engine.lastStage)
                     if engine.isRunning {
                         LabeledContent("Đã chạy", value: engine.uptimeText)
                     }
@@ -158,20 +161,27 @@ struct SetupView: View {
                             .foregroundStyle(.red)
                     }
                     if !engine.logLines.isEmpty {
-                        Text(engine.logLines.suffix(6).joined(separator: "\n"))
+                        Text(engine.logLines.suffix(8).joined(separator: "\n"))
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.secondary)
-
-                        Button {
-                            UIPasteboard.general.string = engine.logLines.joined(separator: "\n")
-                        } label: {
-                            Label("Sao chép log QEMU", systemImage: "doc.on.doc")
-                        }
                     }
+
+                    Button {
+                        copyEngineLog()
+                    } label: {
+                        Label(logCopied ? "Đã copy log QEMU" : "Sao chép log QEMU", systemImage: logCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                    }
+
+                    Button {
+                        engineCheck = engine.preflight()
+                    } label: {
+                        Label("Kiểm tra engine (không boot)", systemImage: "stethoscope")
+                    }
+                    .disabled(engine.state.isActive)
                 } header: {
                     Text("Engine")
                 } footer: {
-                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. Nếu engine báo lỗi ngay, gần như luôn là JIT chưa bật.")
+                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. “Kiểm tra engine” chỉ nạp thư viện và thử cấp phát bộ nhớ exec, không khởi động máy ảo — dùng để biết lỗi nằm ở thư viện hay ở JIT.")
                 }
 
                 Section {
@@ -239,6 +249,22 @@ struct SetupView: View {
             .sheet(item: $preview) { target in
                 WebPreviewView(target: target)
             }
+            .navigationDestination(isPresented: Binding(get: { engineCheck != nil }, set: { if !$0 { engineCheck = nil } })) {
+                if let text = engineCheck {
+                    EngineCheckView(text: text)
+                }
+            }
+        }
+    }
+
+    private func copyEngineLog() {
+        let log = engine.persistedLog()
+        var text = "== QEMU \(engine.state.text) · bước cuối: \(engine.lastStage) ==\n"
+        text += log.isEmpty ? "(qemu.log trống)\n\n" + Diagnostics.text() : log
+        UIPasteboard.general.string = text
+        logCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            logCopied = false
         }
     }
 
@@ -265,6 +291,34 @@ struct SetupView: View {
         case .granted: return .green
         case .denied: return .red
         case .unknown: return .orange
+        }
+    }
+}
+
+private struct EngineCheckView: View {
+    let text: String
+
+    @State private var copied = false
+
+    var body: some View {
+        ScrollView {
+            Text(text)
+                .font(.system(size: 10, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+        }
+        .navigationTitle("Kiểm tra engine")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    UIPasteboard.general.string = text
+                    copied = true
+                } label: {
+                    Label(copied ? "Đã copy" : "Copy", systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                }
+            }
         }
     }
 }

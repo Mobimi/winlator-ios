@@ -5,6 +5,9 @@ import UIKit
 @_silgen_name("csops")
 private func devbox_csops(_ pid: pid_t, _ ops: UInt32, _ useraddr: UnsafeMutableRawPointer?, _ usersize: Int) -> Int32
 
+@_silgen_name("os_proc_available_memory")
+private func devbox_os_proc_available_memory() -> UInt
+
 enum JITState {
     case granted
     case denied
@@ -93,6 +96,22 @@ enum DeviceProbe {
     static func jitState() -> JITState {
         guard let flags = csFlags() else { return .unknown }
         return (flags & CS_DEBUGGED) != 0 ? .granted : .denied
+    }
+
+    static func availableMemoryMB() -> Int {
+        Int(devbox_os_proc_available_memory() / 1_048_576)
+    }
+
+    static func footprintMB() -> Int {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), rebound, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return Int(info.phys_footprint / 1_048_576)
     }
 
     static func isDebugged() -> Bool {
