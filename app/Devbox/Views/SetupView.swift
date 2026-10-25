@@ -4,8 +4,12 @@ import UIKit
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var keeper = BackgroundKeeper.shared
+    @ObservedObject private var images = ImageStore.shared
+    @ObservedObject private var engine = QEMUEngine.shared
+    @StateObject private var ports = PortWatcher()
     @AppStorage("devbox.keepRunning") private var keepRunning = true
     @State private var copied = false
+    @State private var preview: PreviewTarget?
 
     var body: some View {
         NavigationStack {
@@ -92,23 +96,91 @@ struct SetupView: View {
                 }
 
                 Section {
-                    LabeledContent("Image", value: "Debian 13 ARM64")
-                    LabeledContent("Dung lượng", value: "~480 MB (dự kiến)")
-                    LabeledContent("Trạng thái", value: "Chưa cài")
-                    LabeledContent("Engine", value: "QEMU (chưa nối)")
+                    LabeledContent("Trạng thái", value: images.phase.text)
+                    if let image = images.image {
+                        LabeledContent("Debian", value: image.manifest.suite + " · ARM64")
+                        LabeledContent("Kernel", value: image.manifest.kernelVersion)
+                        LabeledContent("Python", value: image.manifest.packages.python)
+                        LabeledContent("Node", value: image.manifest.packages.node + " · npm " + image.manifest.packages.npm)
+                    }
+
+                    if images.isInstalled {
+                        Button(role: .destructive) {
+                            engine.stop()
+                            images.remove()
+                        } label: {
+                            Label("Xoá image", systemImage: "trash")
+                        }
+                        .disabled(images.phase.isBusy)
+                    } else {
+                        Button {
+                            images.install()
+                        } label: {
+                            Label("Tải và cài image (~480 MB)", systemImage: "arrow.down.circle")
+                        }
+                        .disabled(images.phase.isBusy)
+                    }
                 } header: {
                     Text("Môi trường Linux")
                 } footer: {
-                    Text("Image sẽ do workflow Build Debian image tạo ra (M1). Bản app hiện tại không có engine và không giả lập lệnh Linux.")
+                    Text("App tải rootfs Debian 13 từ GitHub Release, kiểm tra SHA256 rồi giải nén zstd ngay trên máy. Cần khoảng 3 GB trống. Tải một lần, sau đó boot offline.")
                 }
 
                 Section {
-                    LabeledContent("Trạng thái", value: "Chờ engine (M2)")
-                    LabeledContent("Cách làm", value: "QMP hostfwd + WKWebView")
+                    LabeledContent("QEMU", value: engine.state.text)
+                    if let image = images.image {
+                        if engine.isRunning || engine.state == .starting {
+                            Button(role: .destructive) {
+                                engine.stop()
+                            } label: {
+                                Label("Dừng Linux", systemImage: "stop.circle")
+                            }
+                        } else if engine.canStart {
+                            Button {
+                                engine.start(image: image)
+                            } label: {
+                                Label("Khởi động Linux", systemImage: "play.circle")
+                            }
+                        } else {
+                            Text("QEMU chỉ boot một lần mỗi tiến trình. Thoát hẳn app rồi mở lại để boot tiếp.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent("Console", value: "127.0.0.1:\(engine.consolePort)")
+                    LabeledContent("QMP", value: "127.0.0.1:\(engine.qmpPort)")
+                    if engine.isRunning {
+                        LabeledContent("Đã chạy", value: engine.uptimeText)
+                    }
+                    if case .failed(let message) = engine.state {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if !engine.logLines.isEmpty {
+                        Text(engine.logLines.suffix(6).joined(separator: "\n"))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Engine")
+                } footer: {
+                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. Nếu engine báo lỗi ngay, gần như luôn là JIT chưa bật.")
+                }
+
+                Section {
+                    LabeledContent("Trạng thái", value: portsText)
+                    if !ports.ports.isEmpty {
+                        ForEach(ports.ports, id: \.self) { port in
+                            Button("Mở localhost:\(port)") {
+                                preview = PreviewTarget(port: port)
+                            }
+                        }
+                    }
                 } header: {
                     Text("Web preview")
                 } footer: {
-                    Text("Khi QEMU chạy và dev server mở cổng, app sẽ tự mở http://localhost:<cổng> trong khung web. Chưa hoạt động vì chưa có engine.")
+                    Text("Guest ghi cổng đang mở vào file .ports trong thư mục share. Khi dev server bắt đầu lắng nghe, app tự mở khung web một lần; nút Web trong terminal để mở lại. Server chạy trong tiến trình QEMU nên ra ngoài app vẫn sống nếu giữ nền bật.")
                 }
 
                 Section("Đã có trong image (dự kiến)") {
@@ -152,7 +224,26 @@ struct SetupView: View {
             .refreshable {
                 app.refreshDevice()
             }
+            .onAppear {
+                ports.start()
+            }
+            .onDisappear {
+                ports.stop()
+            }
+            .sheet(item: $preview) { target in
+                WebPreviewView(target: target)
+            }
         }
+    }
+
+    private var portsText: String {
+        if !images.isInstalled {
+            return "Cần cài image trước"
+        }
+        if ports.ports.isEmpty {
+            return engine.isRunning ? "Chưa có cổng nào mở" : "Linux chưa chạy"
+        }
+        return ports.ports.map { String($0) }.joined(separator: ", ")
     }
 
     private var jitIcon: String {

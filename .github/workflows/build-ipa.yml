@@ -44,6 +44,21 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Embed QEMU engine
+        run: |
+          APP_PATH="app/.build/Build/Products/Release-iphoneos/Devbox.app"
+          mkdir -p "$APP_PATH/Frameworks"
+          URL="https://github.com/Mobimi/winlator-ios/releases/download/engine-v1/devbox-engine.zip"
+          if curl -fL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/engine.zip" "$URL"; then
+            unzip -q "$RUNNER_TEMP/engine.zip" -d "$RUNNER_TEMP/engine"
+            cp -R "$RUNNER_TEMP/engine/Frameworks/." "$APP_PATH/Frameworks/"
+            echo "engine frameworks embedded"
+          else
+            echo "engine release asset missing - building app without engine"
+          fi
+          du -sh "$APP_PATH/Frameworks" || true
+          ls "$APP_PATH/Frameworks" || true
+
       - name: Verify Info.plist
         run: |
           PLIST="app/.build/Build/Products/Release-iphoneos/Devbox.app/Info.plist"

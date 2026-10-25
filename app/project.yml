@@ -31,6 +31,7 @@ targets:
         SUPPORTS_MACCATALYST: "NO"
         ONLY_ACTIVE_ARCH: "NO"
         SWIFT_EMIT_LOC_STRINGS: "YES"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
     info:
       path: Devbox/Info.plist
       properties:

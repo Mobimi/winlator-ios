@@ -5,6 +5,7 @@ enum Diagnostics {
     static func text() -> String {
         let device = DeviceProbe.snapshot()
         let keeper = BackgroundKeeper.shared
+        let engine = QEMUEngine.shared
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
 
@@ -22,8 +23,11 @@ enum Diagnostics {
         lines.append("JIT: \(jitText(device.jit))")
         lines.append("Giữ nền: \(keeper.stateText) · \(keeper.category) · \(keeper.uptimeText)")
         lines.append("UIBackgroundModes: \(backgroundModes())")
-        lines.append("Engine: QEMU chưa nối")
+        lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
         lines.append("Image: \(imageState())")
+        if let last = engine.logLines.suffix(3).last {
+            lines.append("QEMU log: \(last)")
+        }
         if let error = keeper.lastError {
             lines.append("Lỗi nền: \(error)")
         }
@@ -58,14 +62,12 @@ enum Diagnostics {
     }
 
     private static func imageState() -> String {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let image = docs.appendingPathComponent("Devbox/images/devbox-rootfs.ext4")
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: image.path),
-              let size = (attributes[.size] as? NSNumber)?.int64Value else {
+        guard let image = InstalledImage.load() else {
             return "chưa cài"
         }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        return "có (\(formatter.string(fromByteCount: size)))"
+        let size = (try? image.rootfs.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        return "\(image.manifest.suite) · rootfs \(formatter.string(fromByteCount: Int64(size)))"
     }
 }
