@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 final class QEMUEngine: ObservableObject {
     static let shared = QEMUEngine()
@@ -122,7 +123,7 @@ final class QEMUEngine: ObservableObject {
         Self.trace("=== start ===")
         Self.trace("app: \(Bundle.main.bundlePath)")
         Self.trace("engine: \(dylib.path)")
-        Self.trace("engine exists=\(FileManager.default.fileExists(atPath: dylib.path)) size=\(Self.fileSize(dylib))")
+        Self.trace("engine exists=\(FileManager.default.fileExists(atPath: dylib.path)) size=\(Self.fileSize(dylib)) sha256=\(Self.fileDigest(dylib))")
         Self.trace("frameworks: \(Self.frameworkNames(in: frameworks).joined(separator: ", "))")
         Self.trace("jit: \(DeviceProbe.jitState().title) debugged=\(DeviceProbe.isDebugged())")
         Self.trace("exec memory: \(jit.note)")
@@ -456,6 +457,18 @@ final class QEMUEngine: ObservableObject {
 
     private static func fileSize(_ url: URL) -> Int {
         (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+    }
+
+    private static func fileDigest(_ url: URL) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "-" }
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            let chunk = try? handle.read(upToCount: 1 << 20)
+            guard let data = chunk ?? nil, !data.isEmpty else { break }
+            hasher.update(data: data)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func budgetMemory(requested: Int, available: Int) -> Int {
