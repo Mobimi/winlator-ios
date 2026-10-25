@@ -128,6 +128,12 @@ timeout = 120
 retries = 5
 disable-pip-version-check = true
 EOF
+
+# Debian đánh dấu Python là "externally managed" (PEP 668) → chặn pip toàn cục.
+# Đây là máy ảo sandbox dùng một người, không phải hệ thống production:
+# bỏ marker để `pip install` chạy được đúng như trên PC.
+rm -f /usr/lib/python3*/EXTERNALLY-MANAGED
+
 python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Kiểm tra Python chạy thật: tạo venv, tải wheel arm64 từ PyPI, import.
