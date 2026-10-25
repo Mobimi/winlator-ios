@@ -16,6 +16,7 @@ struct TerminalView: View {
     @State private var input = ""
     @State private var preview: PreviewTarget?
     @State private var didBoot = false
+    @State private var didEnter = false
     @FocusState private var inputFocused: Bool
 
     private let localCommands = ["help", "jit", "diag", "bg", "mem", "uname", "df", "ls", "engine"]
@@ -72,6 +73,16 @@ struct TerminalView: View {
             .onAppear(perform: boot)
             .onDisappear {
                 ports.stop()
+            }
+            .onChange(of: guest.connected) { _, connected in
+                if connected {
+                    enterProject()
+                }
+            }
+            .onChange(of: guest.receivedBytes) { _, bytes in
+                if bytes > 0 {
+                    enterProject()
+                }
             }
             .onChange(of: ports.autoOpenPort) { _, port in
                 guard let port else { return }
@@ -275,11 +286,21 @@ struct TerminalView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             inputFocused = true
         }
+        if guest.connected {
+            enterProject()
+        }
         guard !didBoot else { return }
         didBoot = true
         if guestMode, !engine.isRunning, engine.canStart, app.device.jit != .denied, let image = images.image {
             engine.start(image: image)
         }
+    }
+
+    private func enterProject() {
+        guard guestMode, guest.connected, guest.receivedBytes > 0, !didEnter else { return }
+        didEnter = true
+        let path = project.guestPath
+        guest.send("mkdir -p \(path) && cd \(path)\r")
     }
 
     private func submit() {
