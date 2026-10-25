@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7 MB, SHA256 `cf9517f2…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
+File khoảng 7 MB, SHA256 `a724b2a7…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
 
 **Cách khác (qua Artifacts):**
 
@@ -223,7 +223,7 @@ Không cần chụp ảnh — mọi thứ nằm trong file:
 | Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | Xem `logs/qemu.log`; dòng `[t+…] stage:` cuối cùng cho biết treo ở đâu |
 | Dải đỏ `iOS không cấp bộ nhớ thực thi cho QEMU…` | `mmap RWX` bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi kết quả |
 | Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
-| Log QEMU có `failed to find romfile "efi-virtio.rom"` | IPA cũ: engine build không kèm blobs nhưng card mạng vẫn đòi ROM PXE | Cài IPA mới (từ `cf9517f2…` trở đi). Bản mới truyền `romfile=` rỗng nên bỏ ROM, không cần PXE |
+| Log QEMU có `failed to find romfile "efi-virtio.rom"` | IPA cũ: engine build không kèm blobs nhưng card mạng vẫn đòi ROM PXE | Cài IPA mới (từ `a724b2a7…` trở đi). Bản mới truyền `romfile=` rỗng nên bỏ ROM, không cần PXE |
 | Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
 | Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |
 | Tải image báo `SHA256 … không khớp` | Tải hỏng hoặc mạng chèn | Xoá image trong Thiết lập rồi tải lại |
