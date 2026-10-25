@@ -4,6 +4,8 @@ Bạn **không cần Mac**, **không cần biết code**. Build chạy trên Git
 
 Mục tiêu giai đoạn này (M0): **cài được app lên iPhone và thấy JIT xanh.** App lúc này mới có terminal mô phỏng — máy ảo Linux thật sẽ nối ở M1.
 
+> **Bạn không cần cài app UTM.** Khi tài liệu nói "fork UTM", ý là mình lấy **mã nguồn QEMU** của UTM để nhúng vào Devbox ở M1 — không phải bảo bạn tải UTM từ mạng về cài. Cài UTM vừa không cần thiết, vừa dễ gặp lỗi ký app (xem bảng lỗi cuối trang).
+
 ---
 
 ## Chuẩn bị
@@ -159,6 +161,8 @@ Sau `npm run dev` (hoặc `uvicorn app:app`), bạn sẽ thấy:
 | App hết hạn sau 7 ngày | Apple ID miễn phí | Cắm PC, chạy lại Sideloadly |
 | Chỉ cài được 3 app | Giới hạn Apple ID | Xoá bớt app sideload khác |
 | JIT bật xong vẫn đỏ | StikDebug attach sai app | Tắt hẳn Devbox (vuốt lên), mở lại, bật JIT lại |
+| SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |
+| SideStore `Failed to register bundle identifier` | Bundle ID `app.devbox.dev` đã bị team khác đăng ký | Đổi `PRODUCT_BUNDLE_IDENTIFIER` trong `app/project.yml` (thêm hậu tố riêng), build lại. SideStore cũng tự thêm mã team nếu cần |
 
 ---
 
