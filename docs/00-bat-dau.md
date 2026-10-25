@@ -140,6 +140,7 @@ Sang tab **Dự án** → mở `hello-python` → gõ:
 ```
 help
 jit
+diag
 bg
 mem
 uname
@@ -148,7 +149,7 @@ ls
 engine
 ```
 
-Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, giữ nền, RAM, kernel iOS, dung lượng, file trong sandbox). 
+Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, giữ nền, RAM, kernel iOS, dung lượng, file trong sandbox). Lệnh `diag` in một khối chẩn đoán và **copy luôn vào clipboard** — dán vào chat là đủ, không cần chụp ảnh.
 
 ```
 python --version
@@ -184,7 +185,9 @@ Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở 
 | Actions `xcodegen: command not found` | Bước brew lỗi | Chạy lại workflow |
 | App hết hạn sau 7 ngày | Apple ID miễn phí | Cắm PC, chạy lại Sideloadly |
 | Chỉ cài được 3 app | Giới hạn Apple ID | Xoá bớt app sideload khác |
-| JIT bật xong vẫn đỏ | StikDebug attach sai app | Tắt hẳn Devbox (vuốt lên), mở lại, bật JIT lại |
+| JIT bật xong vẫn đỏ | StikDebug attach sai app / app đang chạy trước khi attach | Làm đúng thứ tự: vuốt Devbox khỏi đa nhiệm → mở StikDebug → **Enable JIT** (StikDebug tự mở Devbox) → trong Devbox bấm **Kiểm tra lại thiết bị**. App cũng tự đọc lại mỗi 4 giây |
+| Vẫn đỏ, `P_TRACED = KHÔNG` | Debugger không attach được vào tiến trình (thiếu `get-task-allow`, pairing sai, Developer Mode tắt) | Cài lại bằng **Sideloadly** (bản sideload có `get-task-allow`), bật Developer Mode, tạo lại pairing file, thử lại |
+| Vẫn đỏ, `P_TRACED = CÓ` | Debugger có attach nhưng cờ `CS_DEBUGGED` chưa bật | Gửi mình output `diag`; đây là dữ liệu để xử lý tiếp, không đoán mò |
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |

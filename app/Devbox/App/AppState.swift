@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
 
     private let storeURL: URL
     private let projectsRoot: URL
+    private var jitTimer: Timer?
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -39,6 +40,27 @@ final class AppState: ObservableObject {
 
     func refreshDevice() {
         device = DeviceProbe.snapshot()
+        if device.jit.isGranted {
+            stopJITPolling()
+        }
+    }
+
+    /// StikDebug có thể attach **sau** khi app đã mở, nên chờ JIT bằng cách
+    /// đọc lại `proc_csflags` mỗi 4 giây cho tới khi thấy CS_DEBUGGED.
+    /// Ngừng khi đã bật hoặc khi app vào nền. Không có số liệu giả.
+    func startJITPolling() {
+        refreshDevice()
+        guard !device.jit.isGranted, jitTimer == nil else { return }
+        let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
+            self?.refreshDevice()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        jitTimer = timer
+    }
+
+    func stopJITPolling() {
+        jitTimer?.invalidate()
+        jitTimer = nil
     }
 
     func upsert(_ project: Project) {

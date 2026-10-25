@@ -30,20 +30,37 @@ struct DeviceSnapshot {
     var physicalMemoryMB: Int
     var cores: Int
     var jit: JITState
+    /// Cờ `CS_DEBUGGED` trong `sysctl.proc_csflags`.
     var debugged: Bool
     var csFlags: UInt32?
+    /// Tiến trình đang bị debugger trace (`P_TRACED` trong `kinfo_proc`).
+    var traced: Bool
+    var parentPID: Int32
+    var pid: Int32
 }
 
 enum DeviceProbe {
     static func snapshot() -> DeviceSnapshot {
-        DeviceSnapshot(
+        let trace = traceInfo()
+        let flags = csFlags()
+        let jit: JITState
+        if let flags {
+            jit = (flags & CS_DEBUGGED) != 0 ? .granted : .denied
+        } else {
+            jit = .unknown
+        }
+
+        return DeviceSnapshot(
             model: hardwareModel(),
             systemVersion: UIDevice.current.systemVersion,
             physicalMemoryMB: Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
             cores: ProcessInfo.processInfo.processorCount,
-            jit: jitState(),
-            debugged: isDebugged(),
-            csFlags: csFlags()
+            jit: jit,
+            debugged: (flags.map { ($0 & CS_DEBUGGED) != 0 }) ?? false,
+            csFlags: flags,
+            traced: trace.traced,
+            parentPID: trace.parent,
+            pid: getpid()
         )
     }
 
@@ -67,8 +84,21 @@ enum DeviceProbe {
         return (flags & CS_DEBUGGED) != 0
     }
 
+    /// Tín hiệu thứ hai: `P_TRACED` cho biết có debugger đang trace tiến trình,
+    /// kể cả khi `CS_DEBUGGED` chưa kịp cập nhật. Dùng để chẩn đoán StikDebug.
+    static func traceInfo() -> (traced: Bool, parent: Int32) {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        let result = sysctl(&mib, u_int(mib.count), &info, &size, nil, 0)
+        let traced = result == 0 && (info.kp_proc.p_flag & pTraced) != 0
+        return (traced, getppid())
+    }
+
     /// CS_DEBUGGED — chỉ bật khi có debugger attach.
     private static let CS_DEBUGGED: UInt32 = 0x1000_0000
+    /// P_TRACED trong `kinfo_proc.kp_proc.p_flag`.
+    private static let pTraced: Int32 = 0x0000_0800
 
     static func csFlags() -> UInt32? {
         var flags: UInt32 = 0

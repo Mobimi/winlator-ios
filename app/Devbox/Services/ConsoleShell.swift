@@ -65,6 +65,7 @@ final class ConsoleShell: ObservableObject {
                 Lệnh chạy thật trên máy:
                   jit              trạng thái JIT + cờ code signing
                   bg [on|off]      giữ app chạy khi ra nền
+                  diag             copy toàn bộ chẩn đoán (dán vào chat)
                   mem              RAM, nhiệt, tiết kiệm pin
                   uname            kernel iOS thật
                   df               dung lượng sandbox
@@ -86,6 +87,9 @@ final class ConsoleShell: ObservableObject {
 
         case "bg":
             handleBackground(arguments.first)
+
+        case "diag":
+            printDiagnostics()
 
         case "mem":
             printMemory()
@@ -124,17 +128,19 @@ final class ConsoleShell: ObservableObject {
     // MARK: - Lệnh thật
 
     private func printJIT() {
-        let flags = DeviceProbe.csFlags()
-        let state = DeviceProbe.jitState()
+        let device = DeviceProbe.snapshot()
 
-        if let flags {
+        append("pid \(device.pid) · ppid \(device.parentPID)", .output)
+        if let flags = device.csFlags {
             append(String(format: "sysctl.proc_csflags = 0x%08X", flags), .output)
-            append("CS_DEBUGGED (0x10000000) = \((flags & 0x1000_0000) != 0 ? "BẬT" : "TẮT")", .output)
+            append("CS_DEBUGGED (0x10000000) = \(device.debugged ? "BẬT" : "TẮT")", .output)
         } else {
             append("Không đọc được sysctl.proc_csflags.", .error)
         }
 
-        switch state {
+        append("P_TRACED = \(device.traced ? "CÓ (debugger đang trace)" : "KHÔNG")", device.traced ? .success : .output)
+
+        switch device.jit {
         case .granted:
             append("→ JIT: đã bật (debugger đang attach).", .success)
         case .denied:
@@ -142,6 +148,19 @@ final class ConsoleShell: ObservableObject {
         case .unknown:
             append("→ JIT: không xác định.", .error)
         }
+
+        if !device.jit.isGranted {
+            append("Nếu StikDebug báo đã bật: force quit Devbox, rồi Enable JIT lại (StikDebug sẽ tự mở app). App tự đọc lại mỗi 4 giây.", .info)
+        }
+    }
+
+    private func printDiagnostics() {
+        let text = Diagnostics.text()
+        for line in text.split(separator: "\n") {
+            append(String(line), .output)
+        }
+        UIPasteboard.general.string = text
+        append("→ Đã copy khối trên vào clipboard. Dán vào chat/ghi chú là đủ.", .success)
     }
 
     private func handleBackground(_ argument: String?) {

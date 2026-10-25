@@ -15,15 +15,19 @@ struct DevboxApp: App {
                 .preferredColorScheme(.dark)
                 .onAppear {
                     if keepRunning { keeper.start() }
+                    appState.startJITPolling()
                 }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                appState.refreshDevice()
+                appState.startJITPolling()
                 keeper.appBecameActive()
             case .inactive:
                 keeper.appBecameInactive()
             case .background:
+                appState.stopJITPolling()
                 keeper.appDidEnterBackground()
             @unknown default:
                 break

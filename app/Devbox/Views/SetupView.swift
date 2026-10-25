@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var keeper = BackgroundKeeper.shared
     @AppStorage("devbox.keepRunning") private var keepRunning = true
+    @State private var copied = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +36,10 @@ struct SetupView: View {
                             .font(.system(.caption, design: .monospaced))
                     }
 
+                    LabeledContent("CS_DEBUGGED", value: app.device.debugged ? "BẬT (0x10000000)" : "TẮT")
+                    LabeledContent("P_TRACED", value: app.device.traced ? "có debugger trace" : "không")
+                    LabeledContent("PID · PPID", value: "\(app.device.pid) · \(app.device.parentPID)")
+
                     if app.device.debugged {
                         Label("App đang có debugger attach", systemImage: "ladybug")
                             .font(.caption)
@@ -41,7 +47,7 @@ struct SetupView: View {
                 } header: {
                     Text("JIT")
                 } footer: {
-                    Text("Kiểm tra bằng cờ CS_DEBUGGED (debugger attach). Bật bằng StikDebug → Enable JIT cho Devbox. Không có JIT, QEMU ở M1 sẽ không chạy. JIT không cần entitlement riêng — nó đến từ debugger, không phải từ file .entitlements.")
+                    Text("Nguồn thật là bit CS_DEBUGGED (0x10000000) trong proc_csflags. App tự đọc lại mỗi 4 giây khi JIT còn đỏ, nên không cần mở lại app. Nếu StikDebug báo đã bật mà vẫn đỏ: xem P_TRACED — “không” nghĩa là debugger chưa attach vào tiến trình này. JIT không cần entitlement riêng.")
                 }
 
                 Section {
@@ -122,9 +128,21 @@ struct SetupView: View {
                 }
 
                 Section {
+                    Button {
+                        UIPasteboard.general.string = Diagnostics.text()
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                            copied = false
+                        }
+                    } label: {
+                        Label(copied ? "Đã copy chẩn đoán" : "Sao chép chẩn đoán", systemImage: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                    }
+
                     Button("Kiểm tra lại thiết bị") {
                         app.refreshDevice()
                     }
+                } footer: {
+                    Text("Bấm “Sao chép chẩn đoán” rồi dán vào chat — đủ để kiểm tra JIT, nền, image, không cần chụp ảnh.")
                 }
             }
             .navigationTitle("Thiết lập")

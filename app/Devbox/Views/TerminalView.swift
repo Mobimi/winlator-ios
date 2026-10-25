@@ -11,7 +11,7 @@ struct TerminalView: View {
     @State private var input = ""
     @FocusState private var inputFocused: Bool
 
-    private let quickCommands = ["help", "jit", "bg", "mem", "uname", "df", "ls", "engine"]
+    private let quickCommands = ["help", "jit", "diag", "bg", "mem", "uname", "df", "ls", "engine"]
 
     var body: some View {
         NavigationStack {
