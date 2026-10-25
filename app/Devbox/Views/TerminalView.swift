@@ -15,7 +15,6 @@ struct TerminalView: View {
 
     @State private var input = ""
     @State private var preview: PreviewTarget?
-    @State private var didBoot = false
     @State private var didEnter = false
     @FocusState private var inputFocused: Bool
 
@@ -73,6 +72,11 @@ struct TerminalView: View {
             .onAppear(perform: boot)
             .onDisappear {
                 ports.stop()
+            }
+            .onChange(of: images.isInstalled) { _, installed in
+                if installed {
+                    startEngineIfNeeded()
+                }
             }
             .onChange(of: guest.connected) { _, connected in
                 if connected {
@@ -289,11 +293,13 @@ struct TerminalView: View {
         if guest.connected {
             enterProject()
         }
-        guard !didBoot else { return }
-        didBoot = true
-        if guestMode, !engine.isRunning, engine.canStart, app.device.jit != .denied, let image = images.image {
-            engine.start(image: image)
-        }
+        startEngineIfNeeded()
+    }
+
+    private func startEngineIfNeeded() {
+        guard guestMode, !engine.isRunning, engine.canStart,
+              app.device.jit != .denied, let image = images.image else { return }
+        engine.start(image: image)
     }
 
     private func enterProject() {
