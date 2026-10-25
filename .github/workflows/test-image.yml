@@ -1,0 +1,42 @@
+name: Test image boot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  boot:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install QEMU and zstd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm zstd python3-pip
+          qemu-system-aarch64 --version
+
+      - name: Download release image
+        run: |
+          mkdir -p img
+          BASE=https://github.com/Mobimi/winlator-ios/releases/download/img-v1
+          curl -fL --retry 3 --retry-delay 2 -o img/rootfs.ext4.zst "$BASE/devbox-rootfs.ext4.zst"
+          curl -fL --retry 3 --retry-delay 2 -o img/vmlinuz "$BASE/vmlinuz"
+          curl -fL --retry 3 --retry-delay 2 -o img/initrd.img "$BASE/initrd.img"
+          zstd -d img/rootfs.ext4.zst -o img/rootfs.ext4
+          ls -lh img
+
+      - name: Boot and run smoke test
+        run: |
+          python3 -m pip install --break-system-packages pexpect
+          python3 image/boot_test.py img
+
+      - name: Upload console log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-console
+          path: img/share/.ports
+          if-no-files-found: ignore
