@@ -10,10 +10,10 @@
 |---|---|
 | App build trên GitHub Actions | Actions xanh, có `Devbox-unsigned.ipa` |
 | Cài lên iPhone bằng Sideloadly | App mở được, không văng |
-| Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật** |
-| UI shell chạy | Tạo dự án, mở terminal mô phỏng, gõ `help` |
+| Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
+| Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-**Artifact:** ảnh chụp tab Thiết lập có JIT xanh + ảnh terminal mô phỏng.
+**Artifact:** ảnh chụp tab Thiết lập (JIT đỏ trước, xanh sau) + ảnh console sau `help`.
 
 Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Native Lite** (Python nhúng, không JIT) — xem cuối `docs/01-kien-truc.md`.
 
@@ -123,8 +123,8 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Đưa repo lên GitHub (GitHub Desktop → Add local repository → Publish).
 - [ ] Chạy workflow **Build iOS IPA**, tải artifact.
 - [ ] Cài bằng Sideloadly, bật Developer Mode, bật JIT bằng StikDebug.
-- [ ] Mở app, chụp tab **Thiết lập** + thử terminal mô phỏng.
-- [ ] Trong terminal, gõ `npm run dev` → xem banner xanh và web preview mô phỏng có tự mở không.
+- [ ] Mở app, chụp tab **Thiết lập** (JIT + `proc_csflags`).
+- [ ] Trong console, gõ `jit` và `help` → đối chiếu: JIT phải đỏ khi chưa chạy StikDebug.
 - [ ] Gửi mình: ảnh 2 tab + **tên package/dự án** bạn muốn chạy đầu tiên (ví dụ `requests`, `express`, `create-vite`).
 
 Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.

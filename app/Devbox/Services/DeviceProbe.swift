@@ -15,11 +15,11 @@ enum JITState {
     var detail: String {
         switch self {
         case .granted:
-            return "Đã cấp được quyền thực thi bộ nhớ (mmap RWX)."
+            return "Debugger đã attach (CS_DEBUGGED). QEMU dùng được JIT."
         case .denied:
-            return "iOS đang chặn. Cần StikDebug hoặc AltStore/SideStore có JIT."
+            return "Chưa có debugger attach. Bật bằng StikDebug, rồi mở lại Devbox."
         case .unknown:
-            return "Không kiểm tra được."
+            return "Không đọc được sysctl.proc_csflags."
         }
     }
 }
@@ -31,6 +31,7 @@ struct DeviceSnapshot {
     var cores: Int
     var jit: JITState
     var debugged: Bool
+    var csFlags: UInt32?
 }
 
 enum DeviceProbe {
@@ -41,7 +42,8 @@ enum DeviceProbe {
             physicalMemoryMB: Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
             cores: ProcessInfo.processInfo.processorCount,
             jit: jitState(),
-            debugged: isDebugged()
+            debugged: isDebugged(),
+            csFlags: csFlags()
         )
     }
 
@@ -49,31 +51,32 @@ enum DeviceProbe {
         sysctlString("hw.machine") ?? UIDevice.current.model
     }
 
-    /// Cách UTM kiểm tra JIT: xin một trang nhớ có quyền ghi + thực thi.
-    /// iOS chỉ cho phép khi tiến trình đã bị debugger attach (CS_DEBUGGED).
+    /// JIT trên iOS chỉ có khi tiến trình đang bị debugger attach
+    /// (StikDebug / debugserver) → cờ CS_DEBUGGED bật.
+    ///
+    /// Bài học: `mprotect(PROT_EXEC)` trả về 0 **không** chứng minh JIT đã bật.
+    /// iOS vẫn kill tiến trình khi CPU thực thi trang nhớ chưa được ký,
+    /// nên cách kiểm tra cũ cho kết quả dương tính giả.
     static func jitState() -> JITState {
-        let page = Int(getpagesize())
-        var raw: UnsafeMutableRawPointer?
-        guard posix_memalign(&raw, page, page) == 0, let pointer = raw else {
-            return .unknown
-        }
-        defer { free(pointer) }
-
-        memset(pointer, 0, page)
-        let result = mprotect(pointer, page, PROT_READ | PROT_WRITE | PROT_EXEC)
-        _ = mprotect(pointer, page, PROT_READ | PROT_WRITE)
-
-        return result == 0 ? .granted : .denied
+        guard let flags = csFlags() else { return .unknown }
+        return (flags & CS_DEBUGGED) != 0 ? .granted : .denied
     }
 
     static func isDebugged() -> Bool {
+        guard let flags = csFlags() else { return false }
+        return (flags & CS_DEBUGGED) != 0
+    }
+
+    /// CS_DEBUGGED — chỉ bật khi có debugger attach.
+    private static let CS_DEBUGGED: UInt32 = 0x1000_0000
+
+    static func csFlags() -> UInt32? {
         var flags: UInt32 = 0
         var size = MemoryLayout<UInt32>.size
         guard sysctlbyname("sysctl.proc_csflags", &flags, &size, nil, 0) == 0 else {
-            return false
+            return nil
         }
-        // CS_DEBUGGED = 0x10000000
-        return (flags & 0x1000_0000) != 0
+        return flags
     }
 
     private static func sysctlString(_ name: String) -> String? {

@@ -1,0 +1,8 @@
+# Chuẩn hoá line ending: script chạy trên Linux phải là LF
+* text=auto
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.swift text eol=lf
+*.json text eol=lf

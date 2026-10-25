@@ -112,9 +112,9 @@ Quyết định quan trọng:
 | Base | Debian 13 (trixie) ARM64, minimal, **glibc** (không chọn Alpine vì musl làm hỏng nhiều wheel/native module) |
 | Kernel | `linux-image-arm64` của Debian, hoặc kernel tự build nhỏ hơn (bật virtio, 9p, ext4, cgroup) |
 | Python | `python3` + `python3-venv` + `python3-pip` + `python3-dev` |
-| Node | Node 22 từ NodeSource hoặc bản Debian; kèm `npm`, `npx` |
-| Build | `build-essential`, `pkg-config`, `cmake` (tuỳ chọn) |
-| Khác | `git`, `curl`, `wget`, `nano`, `ripgrep`, `htop`, `unzip` |
+| Node | Node 22.23.4 từ tarball chính thức nodejs.org (ghim sha256); kèm `npm`, `npx` |
+| Build | `build-essential`, `pkg-config` |
+| Khác | `git`, `curl`, `wget`, `nano`, `htop`, `less`, `unzip` |
 | Locale | `en_US.UTF-8` (tránh lỗi pip/npm với locale C) |
 
 Kích thước mục tiêu: **≤ 1.6 GB** chưa nén, **≤ 600 MB** sau zstd. Tải lần đầu, có resume + sha256.
@@ -147,7 +147,7 @@ Mục tiêu: chạy `npm run dev` / `uvicorn` / `streamlit` → app **tự mở 
 
 Luồng hoạt động:
 
-1. **Guest agent** (`portwatch.sh`, chạy như systemd service): mỗi 1 giây đọc `/proc/net/tcp` + `/proc/net/tcp6`, lọc cổng đang `LISTEN` trong dải 1024–65535 (bỏ 22/53/631), ghi ra `/mnt/share/.ports` theo dạng `PORT PID COMM`.
+1. **Guest agent** (`portwatch.sh`, chạy như systemd service): mỗi 1 giây đọc `/proc/net/tcp` + `/proc/net/tcp6`, lọc cổng đang `LISTEN` từ 1024 trở lên (bỏ 631/5353), ghi ra `/mnt/share/.ports` — mỗi dòng một số cổng.
 2. **App** (`PortWatcher`): đọc file 2 giây/lần (9p đủ nhanh cho file vài dòng). Cổng mới → thử `GET http://127.0.0.1:PORT/` với timeout ~1.5 s.
 3. Nếu có phản hồi HTTP (kể cả 3xx/4xx), app gọi QMP `human-monitor-command: hostfwd_add tcp:127.0.0.1:PORT-:PORT` rồi mở `WebPreviewView` (WKWebView).
 4. Banner `Web · localhost:PORT` nằm ngay trên thanh nhập lệnh khi server còn sống: bấm **Mở** để mở lại, **✕** để ẩn.
@@ -158,13 +158,13 @@ Luồng hoạt động:
 | hostfwd | `hostfwd_add` chỉ thêm được, không xoá gọn → app giữ set cổng đã map, chỉ thêm cổng mới. |
 | HTTP probe | `URLSession` + `waitsForConnectivity = false`. Server không phải HTTP (raw TCP, database) → bỏ qua, không mở web. |
 | ATS | `Info.plist` mở `NSAppTransportSecurity` cho HTTP localhost (app sideload nội bộ, không lên App Store). |
-| Tắt tự mở | `@AppStorage("devbox.autoOpenWeb")`, mặc định **bật**; đổi trong tab Thiết lập. |
+| Tắt tự mở | `@AppStorage("devbox.autoOpenWeb")`, mặc định **bật**; công tắc trong tab Thiết lập sẽ thêm ở M2. |
 | Safari | Nút trên thanh công cụ mở đúng địa chỉ bằng Safari thật (khi cần cookie, extension, DevTools). |
 | Giới hạn | Một preview tại một thời điểm; nhiều server thì banner hiện server mới nhất. Khi app vào nền, server guest vẫn chạy nhưng preview đóng. |
 
 `127.0.0.1` trong app iOS là loopback của **chính thiết bị**, và QEMU user-net bind hostfwd vào đó — WKWebView truy cập được mà không mở cổng ra LAN.
 
-> Ở bản UI hiện tại (trước M1), `WebPreviewView` hiển thị trang mô phỏng. WKWebView thật được bật ngay khi có QEMU + portwatcher ở M2.
+> `WebPreviewView` là WKWebView thật, nhưng **chưa dùng được trước M2**: chưa có QEMU/portwatcher nên không có cổng nào để mở. Không có trang giả hay banner giả.
 
 ---
 

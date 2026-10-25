@@ -52,7 +52,7 @@ struct ProjectEditorView: View {
                 } header: {
                     Text("Tài nguyên")
                 } footer: {
-                    Text("iPhone 12 Pro Max có 6 GB RAM; iOS chỉ cho app dùng khoảng 3–3.5 GB nên không nên đặt cao hơn.")
+                    Text("iPhone 12 Pro Max có 6 GB RAM; iOS chỉ cho app dùng khoảng 3–3.5 GB nên không nên đặt cao hơn. Các thông số này áp dụng khi engine QEMU được nối (M1).")
                 }
             }
             .navigationTitle(isNew ? "Dự án mới" : "Cấu hình")

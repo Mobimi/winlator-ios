@@ -1,9 +1,11 @@
 # Devbox (codename) — môi trường Linux trên iPhone
 
-> Mở app → chọn dự án → có một terminal Linux thật, trong đó `python`, `pip`, `node`, `npm`, `npx`, `git`, `gcc` chạy như trên máy tính.
+> Mục tiêu: mở app → chọn dự án → có một terminal Linux thật, trong đó `python`, `pip`, `node`, `npm`, `npx`, `git`, `gcc` chạy như trên máy tính.
 > Không phải "giả lập cho vui": đây là **Debian ARM64 chạy trong máy ảo**, nên mọi thứ hoạt động giống Linux thật.
 
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
+
+> **Trạng thái thật (đọc trước khi cài):** bản app hiện tại **chưa có engine Linux**. Nó không giả lập `python`/`npm` nữa; terminal chỉ chạy lệnh chẩn đoán thật (`jit`, `mem`, `uname`, `df`, `ls`, `engine`). Muốn có Linux thật phải xong M1 (nhúng QEMU + image Debian).
 
 ---
 
@@ -50,14 +52,14 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 │  ├─ WKWebView  ◄──── HTTP localhost ──┤                     │
 │  │   (tự mở khi thấy dev server)      │                     │
 │  └─ QEMU host (process riêng, JIT)     │                     │
-│        ├─ virtio-console (ttyAMA0) ────┘                     │
-│        ├─ virtio-blk: Debian 13 ARM64 (qcow2)               │
-│        ├─ virtio-9p: /home/dev/projects ↔ app Documents     │
+│        ├─ serial PL011 (ttyAMA0) ──────┘                     │
+│        ├─ virtio-blk: Debian 13 ARM64 (ext4 raw)            │
+│        ├─ virtio-9p: /mnt/share ↔ app Documents             │
 │        └─ virtio-net (user-mode) + hostfwd 5173/3000/8000   │
 └──────────────────────────────────────────────────────────────┘
                               │
 ┌──────────────────── Debian 13 ARM64 guest ──────────────────┐
-│ python3 · pip · venv · node · npm · npx · git · gcc · zsh    │
+│ python3 · pip · venv · node · npm · npx · git · gcc · bash   │
 │ /home/dev/projects/<slug>                                    │
 │ agent: /proc/net/tcp → /mnt/share/.ports (phát hiện server)  │
 └──────────────────────────────────────────────────────────────┘
@@ -69,7 +71,7 @@ Chi tiết: [`docs/01-kien-truc.md`](docs/01-kien-truc.md)
 
 ---
 
-## Bạn sẽ làm gì với nó
+## Bạn sẽ làm gì với nó (khi xong M2)
 
 ```bash
 # Python
@@ -95,9 +97,9 @@ Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
 
 1. Guest có một agent nhỏ đọc `/proc/net/tcp` mỗi giây, thấy cổng mới đang LISTEN thì ghi vào `/mnt/share/.ports`.
 2. App đọc file đó, thử HTTP `127.0.0.1:<cổng>`; nếu trả lời được thì gọi QMP `hostfwd_add` để mở cổng ra loopback của iOS.
-3. Terminal hiện banner `Web · localhost:5173` và tự mở `WKWebView` (có nút reload / mở Safari). Tắt tự mở trong tab **Thiết lập** nếu không muốn.
+3. Terminal hiện banner `Web · localhost:5173` và tự mở `WKWebView` (có nút reload / mở Safari). Tuỳ chọn tắt tự mở sẽ có ở tab **Thiết lập** khi làm M2.
 
-Áp dụng cho mọi thứ mở cổng HTTP: Vite, Next.js dev, `uvicorn`, Flask, `streamlit`, `gradio`, harness Python/Node… Ở bản UI hiện tại, preview đang dùng trang mô phỏng; WKWebView thật được nối ở M2.
+Áp dụng cho mọi thứ mở cổng HTTP: Vite, Next.js dev, `uvicorn`, Flask, `streamlit`, `gradio`, harness Python/Node… **Chưa hoạt động ở bản hiện tại**: WKWebView đã có code nhưng chưa có engine/port forwarding (M2). Không có banner giả.
 
 ---
 
@@ -120,11 +122,11 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 
 ```
 [x] Phân tích & chốt kiến trúc
-[x] App shell: dự án, terminal mô phỏng, kiểm tra JIT, thông tin thiết bị
-[x] Web preview: phát hiện cổng, banner, WKWebView, tự mở (UI + mô phỏng)
+[x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
 [x] Pipeline build IPA tự động (GitHub Actions)
-[ ] Cài app lên iPhone 12 Pro Max        ← bước tiếp theo của bạn
-[ ] M1 — QEMU boot Debian, terminal thật (3–4 tuần)
+[x] Pipeline build image Debian 13 ARM64 (GitHub Actions)
+[ ] Cài app lên iPhone 12 Pro Max        ← bước của bạn
+[ ] M1 — nhúng QEMU, boot Debian, terminal thật (3–4 tuần)
 [ ] M2 — python/node/npm, chia sẻ file, port forward + web thật (3–4 tuần)
 [ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
 [ ] M4 — tối ưu hiệu năng, chế độ nền, code-server (tuỳ chọn)

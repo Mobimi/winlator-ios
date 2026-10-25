@@ -3,8 +3,6 @@ import SwiftUI
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
 
-    @AppStorage("devbox.autoOpenWeb") private var autoOpenWeb: Bool = true
-
     var body: some View {
         NavigationStack {
             List {
@@ -29,6 +27,11 @@ struct SetupView: View {
                         }
                     }
 
+                    if let flags = app.device.csFlags {
+                        LabeledContent("proc_csflags", value: String(format: "0x%08X", flags))
+                            .font(.system(.caption, design: .monospaced))
+                    }
+
                     if app.device.debugged {
                         Label("App đang có debugger attach", systemImage: "ladybug")
                             .font(.caption)
@@ -36,7 +39,7 @@ struct SetupView: View {
                 } header: {
                     Text("JIT")
                 } footer: {
-                    Text("Máy ảo Linux dùng JIT của QEMU. Không có JIT thì chỉ chạy được bản mô phỏng UI này. Bật bằng StikDebug.")
+                    Text("Kiểm tra bằng cờ CS_DEBUGGED (debugger attach). Bật bằng StikDebug → Enable JIT cho Devbox. Không có JIT, QEMU ở M1 sẽ không chạy.")
                 }
 
                 Section {
@@ -47,24 +50,16 @@ struct SetupView: View {
                 } header: {
                     Text("Môi trường Linux")
                 } footer: {
-                    Text("Image sẽ được tải ở lần chạy đầu tiên (M1). Hiện app chỉ chạy shell mô phỏng.")
+                    Text("Image sẽ do workflow Build Debian image tạo ra (M1). Bản app hiện tại không có engine và không giả lập lệnh Linux.")
                 }
 
                 Section {
-                    Toggle(isOn: $autoOpenWeb) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tự mở web preview")
-                            Text("Khi phát hiện server mới")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    LabeledContent("Cổng theo dõi", value: "3000 · 5173 · 8000 · 8501 · 7860")
+                    LabeledContent("Trạng thái", value: "Chờ engine (M2)")
+                    LabeledContent("Cách làm", value: "QMP hostfwd + WKWebView")
                 } header: {
                     Text("Web preview")
                 } footer: {
-                    Text("Chạy `npm run dev`, `uvicorn`, `streamlit`… app tự mở http://localhost:<cổng> trong khung web. Tắt mục này nếu muốn mở bằng Safari.")
+                    Text("Khi QEMU chạy và dev server mở cổng, app sẽ tự mở http://localhost:<cổng> trong khung web. Chưa hoạt động vì chưa có engine.")
                 }
 
                 Section("Đã có trong image (dự kiến)") {

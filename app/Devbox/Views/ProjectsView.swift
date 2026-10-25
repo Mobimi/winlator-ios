@@ -44,7 +44,7 @@ struct ProjectsView: View {
                 } header: {
                     Text("Môi trường")
                 } footer: {
-                    Text("Mỗi dự án là một thư mục riêng trong Linux (/home/dev/projects). Dữ liệu mẫu — engine thật nối ở M1.")
+                    Text("Mỗi dự án tạo một thư mục thật trong Documents/Projects và được lưu lại trên máy. Lệnh Linux chỉ chạy sau khi có engine (M1).")
                 }
             }
             .navigationTitle("Devbox")

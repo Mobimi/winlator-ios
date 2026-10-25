@@ -2,7 +2,7 @@
 
 Bạn **không cần Mac**, **không cần biết code**. Build chạy trên GitHub Actions; bạn chỉ làm theo các bước dưới.
 
-Mục tiêu giai đoạn này (M0): **cài được app lên iPhone và thấy JIT xanh.** App lúc này mới có terminal mô phỏng — máy ảo Linux thật sẽ nối ở M1.
+Mục tiêu giai đoạn này (M0): **cài được app lên iPhone và đọc đúng trạng thái JIT** (đỏ trước khi StikDebug, xanh sau khi bật). App lúc này **chưa có engine Linux** — máy ảo Linux thật sẽ nối ở M1.
 
 > **Bạn không cần cài app UTM.** Khi tài liệu nói "fork UTM", ý là mình lấy **mã nguồn QEMU** của UTM để nhúng vào Devbox ở M1 — không phải bảo bạn tải UTM từ mạng về cài. Cài UTM vừa không cần thiết, vừa dễ gặp lỗi ký app (xem bảng lỗi cuối trang).
 
@@ -85,7 +85,7 @@ Không thấy mục này: cắm máy vào PC, mở Sideloadly một lần rồi 
 
 ## Bước 5 — Bật JIT bằng StikDebug
 
-Không có JIT, app vẫn mở nhưng chỉ chạy được terminal mô phỏng.
+Không có JIT, app vẫn mở nhưng QEMU (M1) sẽ không chạy được. Riêng console chẩn đoán thì vẫn chạy được.
 
 ### 5.1 Tạo pairing file (trên PC)
 
@@ -115,35 +115,45 @@ Mở **Devbox** → tab **Thiết lập**. Cần thấy:
 
 - Model `iPhone13,4` (iPhone 12 Pro Max)
 - RAM ~5800 MB
-- **JIT đã bật** ✅
+- **JIT chưa bật** ❌ (đúng như vậy nếu bạn chưa chạy StikDebug)
+- Dòng `proc_csflags` — cờ thật của iOS
 
-Sau đó sang tab **Dự án** → mở `hello-python` → gõ thử:
+Sau đó chạy StikDebug → **Enable JIT** cho Devbox, mở lại app: JIT phải chuyển thành **đã bật** ✅ và `proc_csflags` có bit `CS_DEBUGGED`.
+
+> Bản trước báo "JIT đã bật" sai vì kiểm tra bằng `mprotect`. Đã sửa: giờ app đọc đúng `CS_DEBUGGED`, nên **không thể báo xanh khi chưa có debugger attach**.
+
+Sang tab **Dự án** → mở `hello-python` → gõ:
+
+```
+help
+jit
+mem
+uname
+df
+ls
+engine
+```
+
+Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, RAM, kernel iOS, dung lượng, file trong sandbox). 
 
 ```
 python --version
 npm install express
-npm run dev
-uvicorn app:app
-help
 ```
 
-Đây là shell mô phỏng (chưa có Linux thật). Mục đích: kiểm tra UI, bàn phím, luồng thao tác.
+sẽ báo **"lệnh Linux chưa chạy được — chưa nối engine QEMU (M1)"**. App **không in kết quả giả** nữa.
 
-Sau `npm run dev` (hoặc `uvicorn app:app`), bạn sẽ thấy:
+### Web preview
 
-1. Banner xanh **Web · localhost:5173** ngay trên thanh nhập lệnh.
-2. Khoảng 1 giây sau, khung web **tự mở** (hiện là trang mô phỏng — M2 sẽ là web thật).
-3. Muốn tắt tự mở: tab **Thiết lập** → **Web preview** → gạt công tắc.
-
-Đây chính là luồng sau này dùng cho dự án thật: chạy `npm run dev`/`uvicorn`/`streamlit` là giao diện web tự hiện, không phải copy cổng.
+Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở được khi QEMU chạy và dev server thật mở cổng (M2). Không còn banner giả.
 
 ---
 
 ## Gửi mình gì
 
-1. Ảnh tab **Thiết lập** (thấy JIT + model + mục Web preview).
+1. Ảnh tab **Thiết lập** (JIT + `proc_csflags`).
 2. Ảnh **StikDebug** sau khi bật JIT.
-3. Ảnh terminal mô phỏng sau khi gõ `help`, và ảnh khung web tự mở sau `npm run dev`.
+3. Ảnh console sau khi gõ `jit` và `help`.
 4. Kết quả Actions (xanh/đỏ; nếu đỏ thì copy log).
 5. Bạn muốn chạy **Python hay Node** trước, và package nào (`requests`, `express`, `create-vite`…).
 

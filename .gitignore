@@ -7,17 +7,17 @@ DerivedData/
 xcuserdata/
 
 # XcodeGen sinh ra, không commit
-app/Cellar.xcodeproj/
+app/Devbox.xcodeproj/
 
 # Sản phẩm
 *.ipa
 *.app
 out/
 
-# Guest image (rất nặng, dùng release riêng)
-guest/out/
-*.img
-*.img.zst
+# Build image Debian
+work/
+*.ext4
+*.ext4.zst
 
 # IDE
 .vscode/

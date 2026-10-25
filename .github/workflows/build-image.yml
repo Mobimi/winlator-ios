@@ -1,0 +1,43 @@
+name: Build Debian image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "image/**"
+      - ".github/workflows/build-image.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    # Repo public → runner arm64 native (nhanh).
+    # Repo private → runner x86_64; script tự bật qemu-user + binfmt.
+    runs-on: ${{ github.event.repository.private && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show host
+        run: uname -a
+
+      - name: Build Debian 13 ARM64 image
+        run: sudo bash image/build-image.sh
+        env:
+          SUITE: trixie
+          IMG_SIZE: 5G
+
+      - name: Show output
+        run: ls -lh out
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: devbox-debian-image
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
