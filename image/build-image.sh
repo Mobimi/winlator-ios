@@ -220,7 +220,11 @@ cat > /etc/systemd/network/20-wired.network <<'EOF'
 [Match]
 Name=eth* en*
 [Network]
-DHCP=yes
+Address=10.0.2.15/24
+Gateway=10.0.2.2
+DNS=10.0.2.3
+ConfigureWithoutCarrier=yes
+IPv6AcceptRA=no
 EOF
 ln -sf /lib/systemd/system/systemd-networkd.service \
   /etc/systemd/system/multi-user.target.wants/systemd-networkd.service
