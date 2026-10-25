@@ -8,6 +8,9 @@ on:
       - ".github/workflows/build-ipa.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -49,15 +52,16 @@ jobs:
           APP_PATH="app/.build/Build/Products/Release-iphoneos/Devbox.app"
           mkdir -p "$APP_PATH/Frameworks"
           URL="https://github.com/Mobimi/winlator-ios/releases/download/engine-v1/devbox-engine.zip"
-          if curl -fL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/engine.zip" "$URL"; then
-            unzip -q "$RUNNER_TEMP/engine.zip" -d "$RUNNER_TEMP/engine"
-            cp -R "$RUNNER_TEMP/engine/Frameworks/." "$APP_PATH/Frameworks/"
-            echo "engine frameworks embedded"
-          else
-            echo "engine release asset missing - building app without engine"
-          fi
-          du -sh "$APP_PATH/Frameworks" || true
-          ls "$APP_PATH/Frameworks" || true
+          curl -fL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/engine.zip" "$URL"
+          unzip -q "$RUNNER_TEMP/engine.zip" -d "$RUNNER_TEMP/engine"
+          cp -R "$RUNNER_TEMP/engine/Frameworks/." "$APP_PATH/Frameworks/"
+          test -f "$APP_PATH/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu" || {
+            echo "qemu framework missing from engine zip"
+            exit 1
+          }
+          echo "engine frameworks embedded"
+          du -sh "$APP_PATH/Frameworks"
+          ls "$APP_PATH/Frameworks"
 
       - name: Verify Info.plist
         run: |
@@ -85,3 +89,12 @@ jobs:
           path: out/Devbox-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish IPA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view ipa-v1 >/dev/null 2>&1 || \
+            gh release create ipa-v1 --title "Devbox IPA (unsigned)" --notes "Unsigned arm64 IPA with QEMU engine embedded. Install with Sideloadly, then enable JIT with StikDebug."
+          gh release upload ipa-v1 out/Devbox-unsigned.ipa --clobber
+          shasum -a 256 out/Devbox-unsigned.ipa
