@@ -27,6 +27,8 @@
 
 👉 **Bắt đầu tại [`docs/00-bat-dau-tu-day.md`](docs/00-bat-dau-tu-day.md)** — hướng dẫn từng bước, không cần biết code.
 
+> ⚠️ **Nếu mục tiêu là game 3D hiện đại kiểu MiSide ("Mita")**: máy ảo local **không chạy nổi** trên iPhone 12 Pro Max. Đọc [`docs/05-mita-miside-tren-iphone.md`](docs/05-mita-miside-tren-iphone.md) — cách chơi 60 fps ngay bằng stream từ laptop.
+
 ---
 
 ## 1. Vì sao không "port Winlator sang iOS" theo cách thông thường?
