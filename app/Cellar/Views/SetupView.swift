@@ -17,7 +17,7 @@ struct SetupView: View {
                 Section {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: app.device.jit.isGranted ? "checkmark.seal.fill" : "xmark.seal.fill")
-                            .foregroundStyle(app.device.jit.isGranted ? .green : .red)
+                            .foregroundStyle(app.device.jit.isGranted ? Color.green : Color.red)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(app.device.jit.isGranted ? "JIT đã bật" : "JIT chưa bật")

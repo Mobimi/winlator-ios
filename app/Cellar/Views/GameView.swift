@@ -36,15 +36,15 @@ struct GameView: View {
         VStack(spacing: 14) {
             Image(systemName: "gamecontroller.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(.white.opacity(0.22))
+                .foregroundStyle(Color.white.opacity(0.22))
 
             Text(container.gameTitle)
                 .font(.title2.bold())
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Color.white.opacity(0.8))
 
             Text("Màn hình giả lập — engine chưa nối")
                 .font(.footnote)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(Color.white.opacity(0.4))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -57,11 +57,11 @@ struct GameView: View {
 
             Text(engine.message)
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Color.white.opacity(0.85))
 
             Text("\(Int(engine.progress * 100))%")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Color.white.opacity(0.5))
         }
         .padding(28)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -101,19 +101,19 @@ struct GameView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.white)
                 .frame(width: 42, height: 42)
-                .background(.black.opacity(0.45), in: Circle())
+                .background(Color.black.opacity(0.45), in: Circle())
         }
     }
 
     private func chip(_ text: String) -> some View {
         Text(text)
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(Color.white.opacity(0.85))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.black.opacity(0.45), in: Capsule())
+            .background(Color.black.opacity(0.45), in: Capsule())
     }
 }
 
@@ -138,7 +138,7 @@ struct LogView: View {
                     ForEach(lines, id: \.self) { line in
                         Text(line)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.green.opacity(0.85))
+                            .foregroundStyle(Color.green.opacity(0.85))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

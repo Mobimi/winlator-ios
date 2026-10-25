@@ -21,6 +21,8 @@ targets:
     platform: iOS
     sources:
       - path: Cellar
+        excludes:
+          - Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.cellar.dev
