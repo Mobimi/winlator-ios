@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7.28 MB, SHA256 `61d8ab74…` (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi.
+File khoảng 7.29 MB, SHA256 `f17a26dc…`, phiên bản **0.2.0 (2)** (bản build ngày 25/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi. Muốn chắc mình cài đúng bản: mở tab **Thiết lập**, dòng đầu của chẩn đoán phải ghi `== Devbox 0.2.0 (2) ==`.
 
 **Cách khác (qua Artifacts):**
 
@@ -214,7 +214,7 @@ Mật khẩu: `dev`. Khi đó bạn có terminal grid thật, `vim`/`htop`/`tmux
 Không cần chụp ảnh — mọi thứ nằm trong file:
 
 1. Tab **Thiết lập** → **Sao chép chẩn đoán** → dán vào chat.
-2. Nếu boot lỗi: mở app **Files** → **Trên iPhone của tôi** → **Devbox** → **logs** → gửi file `qemu.log` (và `diagnostics.txt`). Hoặc bấm **Chia sẻ file log** trong tab Thiết lập để gửi qua AirDrop/Telegram. Log của lần boot trước giữ ở `qemu-previous.log`.
+2. Nếu boot lỗi: mở app **Files** → **Trên iPhone của tôi** → **Devbox** → **logs** → gửi **ba file** `qemu.log`, `serial.log`, `diagnostics.txt`. `serial.log` là chữ guest in ra (kernel + console), có cả khi cổng 4444 không nối được — thiếu file này thì gần như không chẩn đoán được. Hoặc bấm **Chia sẻ file log** trong tab Thiết lập để gửi qua AirDrop/Telegram. Log của lần boot trước giữ ở `qemu-previous.log`.
 3. Kết quả `python3 -V`, `node -v`, `npm -v` trong terminal.
 4. Lỗi Sideloadly/StikDebug nếu có (copy nguyên văn).
 
@@ -242,6 +242,8 @@ Không cần chụp ảnh — mọi thứ nằm trong file:
 | Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | Xem `logs/qemu.log`; dòng `[t+…] stage:` cuối cùng cho biết treo ở đâu |
 | Dải đỏ `iOS không cấp bộ nhớ thực thi cho QEMU…` | `mmap RWX` bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi kết quả |
 | Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
+| `serial.log` trống hoàn toàn, `diag` báo `guest: … pc=0x40000000` không đổi | CPU khách không chạy được instruction đầu tiên (JIT/vCPU) | Bật **Chế độ chắc chắn (1 CPU)** ở tab Thiết lập, thoát hẳn app, mở lại, boot lại, rồi gửi `qemu.log` + `serial.log` |
+| `serial.log` có chữ nhưng app không hiện | App đọc file chậm / iOS chặn Files | Bấm **Nối lại** ở dải trạng thái; gửi `serial.log` |
 | Log QEMU có `failed to find romfile "efi-virtio.rom"` | IPA cũ: engine build không kèm blobs nhưng card mạng vẫn đòi ROM PXE | Cài IPA mới (từ `a724b2a7…` trở đi). Bản mới truyền `romfile=` rỗng nên bỏ ROM, không cần PXE |
 | Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
 | Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |

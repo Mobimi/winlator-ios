@@ -7,7 +7,9 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 
 > **Trạng thái thật (2026-10-25):** engine QEMU đã build cho iOS và nhúng trong IPA, image Debian 13 đã phát hành, app đã có luồng tải image → boot → terminal. **Chưa test trên máy thật** — bước tiếp theo là cài IPA và chạy thử.
 >
-> **Đã build xanh:** workflow **Build iOS IPA** → `Devbox-unsigned.ipa` 7.28 MB (SHA256 `61d8ab74…`, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
+> **Đã build xanh:** workflow **Build iOS IPA** run `40206934158` → `Devbox-unsigned.ipa` 7.29 MB (SHA256 `f17a26dc…`, phiên bản 0.2.0 build 2, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
+>
+> **Mới ở bản 0.2.0:** console lấy chữ trực tiếp từ file `Devbox/logs/serial.log` (QEMU ghi ra file này ngay cả khi chưa có client nối cổng 4444), app tự kiểm tra JIT bằng cách ghi – đọc lại – **chạy thử** một hàm mã máy, và hỏi QMP để lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu của RAM. Tab **Thiết lập** có công tắc **Chế độ chắc chắn (1 CPU)**.
 >
 > **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 
