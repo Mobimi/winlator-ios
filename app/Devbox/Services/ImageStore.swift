@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import UIKit
 
 final class ImageStore: ObservableObject {
     static let shared = ImageStore()
@@ -57,7 +58,15 @@ final class ImageStore: ObservableObject {
     func install() {
         guard !phase.isBusy else { return }
         phase = .loadingManifest
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            defer {
+                DispatchQueue.main.async {
+                    UIApplication.shared.isIdleTimerDisabled = false
+                }
+            }
             do {
                 try self?.runInstall()
             } catch {
