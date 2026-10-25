@@ -221,7 +221,7 @@ meson_build "$ZSTD_DIR/build/meson" \
 
 (
     cd "$QEMU_DIR"
-    if [ ! -f config-host.mak ]; then
+    if [ ! -f build/build.ninja ]; then
         log "configure qemu"
         ./configure \
             --prefix="$SYSROOT" \
@@ -256,8 +256,8 @@ meson_build "$ZSTD_DIR/build/meson" \
             --disable-auth-pam
     fi
     log "build qemu"
-    ninja -j "$NCPU"
-    ninja install
+    ninja -C build -j "$NCPU"
+    ninja -C build install
 )
 
 framework_name() {
