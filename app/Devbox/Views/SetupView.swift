@@ -161,6 +161,12 @@ struct SetupView: View {
                         Text(engine.logLines.suffix(6).joined(separator: "\n"))
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.secondary)
+
+                        Button {
+                            UIPasteboard.general.string = engine.logLines.joined(separator: "\n")
+                        } label: {
+                            Label("Sao chép log QEMU", systemImage: "doc.on.doc")
+                        }
                     }
                 } header: {
                     Text("Engine")

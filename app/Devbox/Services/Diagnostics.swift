@@ -25,8 +25,11 @@ enum Diagnostics {
         lines.append("UIBackgroundModes: \(backgroundModes())")
         lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
         lines.append("Image: \(imageState())")
-        if let last = engine.logLines.suffix(3).last {
-            lines.append("QEMU log: \(last)")
+        if !engine.logLines.isEmpty {
+            lines.append("QEMU log:")
+            for line in engine.logLines.suffix(10) {
+                lines.append("  \(line)")
+            }
         }
         if let error = keeper.lastError {
             lines.append("Lỗi nền: \(error)")
