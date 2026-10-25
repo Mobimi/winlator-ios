@@ -95,7 +95,7 @@ Nếu M0 thất bại vì StikDebug/JIT: chuyển ngay sang phương án **Nativ
 ## M4 — Tối ưu & mở rộng (tuỳ chọn, liên tục)
 
 - Tuning TCG: số vCPU, cache size, ghim vào P-core, `-accel tcg,thread=multi`.
-- Xử lý nền: `beginBackgroundTask`, cảnh báo trước khi suspend, tự pause an toàn.
+- Xử lý nền: **đã có sớm** — `UIBackgroundModes=audio` + audio im lặng (−100 dBFS), xem `docs/01-kien-truc.md` §7.1. M4 chỉ còn tinh chỉnh: tự pause QEMU khi pin thấp, giảm tải audio session.
 - Giảm nhiệt: giới hạn tốc độ build, tạm dừng khi pin thấp.
 - `code-server` trong guest → mở VS Code trên Safari (thử nghiệm).
 - Chế độ "Native Lite" (Python nhúng, không JIT) cho người không muốn sideload.
@@ -123,8 +123,8 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Đưa repo lên GitHub (GitHub Desktop → Add local repository → Publish).
 - [ ] Chạy workflow **Build iOS IPA**, tải artifact.
 - [ ] Cài bằng Sideloadly, bật Developer Mode, bật JIT bằng StikDebug.
-- [ ] Mở app, chụp tab **Thiết lập** (JIT + `proc_csflags`).
-- [ ] Trong console, gõ `jit` và `help` → đối chiếu: JIT phải đỏ khi chưa chạy StikDebug.
+- [ ] Mở app, chụp tab **Thiết lập** (JIT + `proc_csflags` + Chạy nền: `UIBackgroundModes = audio ✓`).
+- [ ] Trong console, gõ `jit`, `bg`, `help` → đối chiếu: JIT phải đỏ khi chưa chạy StikDebug; `bg` phải báo “Đang giữ nền”.
 - [ ] Gửi mình: ảnh 2 tab + **tên package/dự án** bạn muốn chạy đầu tiên (ví dụ `requests`, `express`, `create-vite`).
 
 Sau khi M0 xong, mình bắt tay vào M1: fork UTM và nối QEMU.

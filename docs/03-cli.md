@@ -129,7 +129,7 @@ Nguyên nhân: iOS **không cho virtualization phần cứng**, nên QEMU phải
 | RAM guest | 2.5 GB | iOS chỉ cho app ~3–3.5 GB; thêm zram 1 GB ở M2 |
 | CPU | 4 vCPU (TCG đa luồng) | A14 |
 | Pin/nhiệt | — | build liên tục sẽ throttle sau 15–20 phút |
-| Nền | — | iOS treo app sau ~30 giây ở nền; `npm install` dài phải giữ app mở |
+| Nền | giữ nền bằng audio im lặng | rời app vẫn chạy; Force Quit thì tắt; tốn pin |
 
 ## Bài test nghiệm thu (sẽ chạy ở M1/M2)
 

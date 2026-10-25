@@ -122,11 +122,25 @@ Sau đó chạy StikDebug → **Enable JIT** cho Devbox, mở lại app: JIT ph�
 
 > Bản trước báo "JIT đã bật" sai vì kiểm tra bằng `mprotect`. Đã sửa: giờ app đọc đúng `CS_DEBUGGED`, nên **không thể báo xanh khi chưa có debugger attach**.
 
+### Giữ nền (để web server không chết khi rời app)
+
+Tab **Thiết lập** → mục **Chạy nền**, cần thấy:
+
+- Công tắc **Giữ app chạy khi ra nền** đang bật (mặc định bật)
+- Trạng thái `Đang giữ nền`
+- `UIBackgroundModes` = `audio ✓`
+- Audio session `playback · mixWithOthers`
+
+Thử thật: bấm Home (hoặc mở app khác) vài phút rồi quay lại — Devbox vẫn ở trạng thái `Đang giữ nền`, không bị khởi động lại. Vuốt app khỏi đa nhiệm thì app tắt (iOS luôn vậy, không có cách chặn).
+
+> App phát một đoạn audio gần như im lặng (−100 dBFS) để iOS không treo tiến trình. Không nghe thấy gì, nhưng tốn pin và làm máy ấm — tắt công tắc khi không cần. Cách này không cần entitlement và không ảnh hưởng profile free 7 ngày.
+
 Sang tab **Dự án** → mở `hello-python` → gõ:
 
 ```
 help
 jit
+bg
 mem
 uname
 df
@@ -134,7 +148,7 @@ ls
 engine
 ```
 
-Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, RAM, kernel iOS, dung lượng, file trong sandbox). 
+Đây là **console thật**: các lệnh trên đọc trạng thái thật của máy (JIT, giữ nền, RAM, kernel iOS, dung lượng, file trong sandbox). 
 
 ```
 python --version
@@ -145,15 +159,15 @@ sẽ báo **"lệnh Linux chưa chạy được — chưa nối engine QEMU (M1)
 
 ### Web preview
 
-Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở được khi QEMU chạy và dev server thật mở cổng (M2). Không còn banner giả.
+Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở được khi QEMU chạy và dev server thật mở cổng (M2). Không còn banner giả. Khi M2 xong, nhờ phần **giữ nền** ở trên, bạn chuyển sang app khác mà `localhost:<cổng>` vẫn trả lời.
 
 ---
 
 ## Gửi mình gì
 
-1. Ảnh tab **Thiết lập** (JIT + `proc_csflags`).
+1. Ảnh tab **Thiết lập** (JIT, `proc_csflags`, mục **Chạy nền**).
 2. Ảnh **StikDebug** sau khi bật JIT.
-3. Ảnh console sau khi gõ `jit` và `help`.
+3. Ảnh console sau khi gõ `jit`, `bg` và `help`.
 4. Kết quả Actions (xanh/đỏ; nếu đỏ thì copy log).
 5. Bạn muốn chạy **Python hay Node** trước, và package nào (`requests`, `express`, `create-vite`…).
 
@@ -171,6 +185,8 @@ Chưa hoạt động ở bản này. Code WKWebView đã có, nhưng chỉ mở 
 | App hết hạn sau 7 ngày | Apple ID miễn phí | Cắm PC, chạy lại Sideloadly |
 | Chỉ cài được 3 app | Giới hạn Apple ID | Xoá bớt app sideload khác |
 | JIT bật xong vẫn đỏ | StikDebug attach sai app | Tắt hẳn Devbox (vuốt lên), mở lại, bật JIT lại |
+| Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
+| Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | SideStore `Failed to set app extension placeholders … does not match required prefix` | Bạn đang cài **một app khác có extension** (thường là UTM), không phải Devbox. SideStore thêm mã team vào bundle ID app chính nhưng không thêm vào app extension | Không cần app đó: cài Devbox. Nếu thật sự cần: dùng Sideloadly, hoặc nhờ mình vá bundle ID trong IPA |
 | SideStore `Failed to register bundle identifier` | Bundle ID `app.devbox.dev` đã bị team khác đăng ký | Đổi `PRODUCT_BUNDLE_IDENTIFIER` trong `app/project.yml` (thêm hậu tố riêng), build lại. SideStore cũng tự thêm mã team nếu cần |
 

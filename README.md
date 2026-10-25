@@ -109,7 +109,7 @@ Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
 
 | Giới hạn | Hệ quả |
 |---|---|
-| iOS tạm dừng app sau ~30 giây ở nền | `npm install` dài phải giữ app mở, màn hình sáng |
+| App bị iOS treo ~30 giây sau khi rời màn hình | Đã có **giữ nền** (audio im lặng): chuyển sang app khác thì web server vẫn chạy; vuốt app khỏi đa nhiệm thì tắt; tốn pin |
 | Guest chỉ có ~2.5 GB RAM | Build lớn (Next.js, webpack nhiều entry) dễ OOM |
 | QEMU TCG trên A14 | CPU ≈ laptop 2015; chạy được, build chậm |
 | Không GPU | Không chạy app GUI, không game, không Docker Desktop |
@@ -127,11 +127,12 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
 [x] Pipeline build IPA tự động (GitHub Actions) — **đã build xanh, có IPA thật**
 [x] Pipeline build image Debian 13 ARM64 (GitHub Actions) — **đã build xanh, 395 MB nén, Python/pip/numpy/pandas chạy thật**
+[x] Chạy nền: `UIBackgroundModes=audio` + audio im lặng (công tắc trong Thiết lập, lệnh `bg`)
 [ ] Cài app lên iPhone 12 Pro Max        ← bước của bạn
 [ ] M1 — nhúng QEMU, boot Debian, terminal thật (3–4 tuần)
 [ ] M2 — python/node/npm, chia sẻ file, port forward + web thật (3–4 tuần)
 [ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
-[ ] M4 — tối ưu hiệu năng, chế độ nền, code-server (tuỳ chọn)
+[ ] M4 — tối ưu pin/nhiệt, code-server (tuỳ chọn)
 ```
 
 ---

@@ -6,11 +6,12 @@ struct TerminalView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var shell = ConsoleShell()
+    @ObservedObject private var keeper = BackgroundKeeper.shared
 
     @State private var input = ""
     @FocusState private var inputFocused: Bool
 
-    private let quickCommands = ["help", "jit", "mem", "uname", "df", "ls", "engine"]
+    private let quickCommands = ["help", "jit", "bg", "mem", "uname", "df", "ls", "engine"]
 
     var body: some View {
         NavigationStack {
@@ -56,6 +57,11 @@ struct TerminalView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.6))
             Spacer()
+            if keeper.isAudioRunning {
+                Text("GIỮ NỀN")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.green)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)

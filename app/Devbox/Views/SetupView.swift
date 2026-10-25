@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SetupView: View {
     @EnvironmentObject private var app: AppState
+    @ObservedObject private var keeper = BackgroundKeeper.shared
+    @AppStorage("devbox.keepRunning") private var keepRunning = true
 
     var body: some View {
         NavigationStack {
@@ -39,7 +41,45 @@ struct SetupView: View {
                 } header: {
                     Text("JIT")
                 } footer: {
-                    Text("Kiểm tra bằng cờ CS_DEBUGGED (debugger attach). Bật bằng StikDebug → Enable JIT cho Devbox. Không có JIT, QEMU ở M1 sẽ không chạy.")
+                    Text("Kiểm tra bằng cờ CS_DEBUGGED (debugger attach). Bật bằng StikDebug → Enable JIT cho Devbox. Không có JIT, QEMU ở M1 sẽ không chạy. JIT không cần entitlement riêng — nó đến từ debugger, không phải từ file .entitlements.")
+                }
+
+                Section {
+                    Toggle("Giữ app chạy khi ra nền", isOn: $keepRunning)
+
+                    LabeledContent("Trạng thái", value: keeper.stateText)
+                    if keeper.isAudioRunning {
+                        LabeledContent("Đã giữ", value: keeper.uptimeText)
+                    }
+                    LabeledContent("Audio session", value: keeper.category)
+                    LabeledContent("Route", value: keeper.route)
+                    if keeper.backgroundTaskActive {
+                        LabeledContent("Gia hạn tạm", value: "~30 giây")
+                    }
+                    LabeledContent("UIBackgroundModes", value: keeper.hasBackgroundAudioMode ? "audio ✓" : "THIẾU")
+                    if keeper.interruptionCount > 0 {
+                        LabeledContent("Gián đoạn audio", value: "\(keeper.interruptionCount) lần")
+                    }
+                    if let error = keeper.lastError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Chạy nền")
+                } footer: {
+                    Text("App phát một đoạn audio im lặng để iOS không treo tiến trình → web server trong máy ảo vẫn trả lời khi bạn chuyển sang app khác. Vuốt app khỏi đa nhiệm thì luôn tắt, không cách nào chặn. Tốn pin và ấm máy, nên tắt khi không cần.")
+                }
+
+                Section {
+                    LabeledContent("Entitlements", value: "Không dùng")
+                    LabeledContent("Quyền đặc biệt", value: "Chỉ Info.plist")
+                    LabeledContent("JIT", value: "Debugger attach (StikDebug)")
+                    LabeledContent("Ký app", value: "Sideloadly / SideStore · 7 ngày")
+                } header: {
+                    Text("Chữ ký & quyền")
+                } footer: {
+                    Text("App không có file .entitlements riêng. Thêm entitlement ngoài profile free sẽ làm app cài xong bị crash. Chạy nền dùng UIBackgroundModes (Info.plist), JIT dùng CS_DEBUGGED, nên cả hai đều không cần entitlement.")
                 }
 
                 Section {
@@ -70,14 +110,15 @@ struct SetupView: View {
                 }
 
                 Section {
-                    Label("App bị iOS tạm dừng sau ~30 giây ở nền", systemImage: "moon.zzz")
+                    Label("Vuốt app khỏi đa nhiệm là app tắt (mọi app iOS đều vậy)", systemImage: "hand.raised")
+                    Label("Giữ nền tốn pin và làm máy ấm", systemImage: "battery.25")
                     Label("Không chạy được app có giao diện đồ hoạ", systemImage: "display")
                     Label("Không thay thế được laptop cho build nặng", systemImage: "laptopcomputer")
                     Label("Cần bật lại JIT mỗi lần mở app (StikDebug)", systemImage: "arrow.clockwise")
                 } header: {
                     Text("Giới hạn đã biết")
                 } footer: {
-                    Text("Đây là giới hạn của iOS, không phải lỗi app. Giữ màn hình sáng khi chạy npm install lâu.")
+                    Text("Đây là giới hạn của iOS, không phải lỗi app. Khi giữ nền đang bật, đừng vuốt app khỏi đa nhiệm nếu còn server chạy.")
                 }
 
                 Section {

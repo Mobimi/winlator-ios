@@ -44,6 +44,15 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Verify Info.plist
+        run: |
+          PLIST="app/.build/Build/Products/Release-iphoneos/Devbox.app/Info.plist"
+          test -f "$PLIST" || { echo "Info.plist not found"; exit 1; }
+          MODES=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST")
+          echo "UIBackgroundModes: $MODES"
+          FIRST=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes:0" "$PLIST")
+          test "$FIRST" = "audio" || { echo "UIBackgroundModes[0] must be audio"; exit 1; }
+
       - name: Package IPA
         run: |
           APP_PATH="app/.build/Build/Products/Release-iphoneos/Devbox.app"

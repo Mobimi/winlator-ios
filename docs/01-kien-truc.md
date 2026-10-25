@@ -160,11 +160,35 @@ Luồng hoạt động:
 | ATS | `Info.plist` mở `NSAppTransportSecurity` cho HTTP localhost (app sideload nội bộ, không lên App Store). |
 | Tắt tự mở | `@AppStorage("devbox.autoOpenWeb")`, mặc định **bật**; công tắc trong tab Thiết lập sẽ thêm ở M2. |
 | Safari | Nút trên thanh công cụ mở đúng địa chỉ bằng Safari thật (khi cần cookie, extension, DevTools). |
-| Giới hạn | Một preview tại một thời điểm; nhiều server thì banner hiện server mới nhất. Khi app vào nền, server guest vẫn chạy nhưng preview đóng. |
+| Giới hạn | Một preview tại một thời điểm; nhiều server thì banner hiện server mới nhất. Khi app vào nền và đang giữ nền, server guest + hostfwd vẫn sống; preview trong app tạm ẩn, quay lại là mở tiếp. |
 
 `127.0.0.1` trong app iOS là loopback của **chính thiết bị**, và QEMU user-net bind hostfwd vào đó — WKWebView truy cập được mà không mở cổng ra LAN.
 
 > `WebPreviewView` là WKWebView thật, nhưng **chưa dùng được trước M2**: chưa có QEMU/portwatcher nên không có cổng nào để mở. Không có trang giả hay banner giả.
+
+### 7.1 Giữ app chạy khi ra nền (đã có trong app)
+
+Vấn đề: iOS suspend app vài giây sau khi rời màn hình → socket của dev server chết theo.
+
+Cách làm trong `BackgroundKeeper`:
+
+1. `Info.plist` khai báo `UIBackgroundModes: [audio]` (khoá plist, **không** phải entitlement, nên không phá profile free).
+2. `AVAudioSession` category `.playback`, option `.mixWithOthers` (không chặn nhạc của app khác).
+3. `AVAudioEngine` phát buffer gần như im lặng (−100 dBFS) lặp vô hạn. Hệ thống coi app là app nhạc đang phát → không suspend tiến trình.
+4. Khi vào nền, nếu audio chưa lên thì xin thêm `beginBackgroundTask` (~30 giây) để kịp khởi động lại; audio bị ngắt (cuộc gọi, rút tai nghe) thì tự bật lại ở `interruptionNotification` và `routeChangeNotification`.
+
+Công tắc: tab **Thiết lập → Chạy nền** (`@AppStorage("devbox.keepRunning")`, mặc định bật) hoặc lệnh `bg on|off` trong console. Trạng thái thật hiển thị ngay trong tab đó: audio session, route, thời gian đã giữ, số lần gián đoạn, lỗi nếu có.
+
+Giới hạn thật:
+
+| Tình huống | Kết quả |
+|---|---|
+| Bấm Home, chuyển sang app khác, khoá máy | App + server vẫn chạy |
+| Vuốt app khỏi đa nhiệm (Force Quit) | **Luôn tắt**, không API nào chặn được |
+| iOS thiếu RAM / nhiệt quá cao | Có thể bị kill, dù audio vẫn phát |
+| Pin | Tốn hơn bình thường (audio session + QEMU cùng chạy), máy ấm hơn |
+
+Đây là cách các app sideload vẫn làm; App Store sẽ từ chối app phát audio im lặng, nhưng Devbox chỉ cài qua Sideloadly/SideStore.
 
 ---
 
@@ -172,7 +196,7 @@ Luồng hoạt động:
 
 | Giới hạn | Xử lý |
 |---|---|
-| iOS suspend app sau ~30 s | `beginBackgroundTask` (~30 s) + `idleTimerDisabled` khi có tác vụ chạy + cảnh báo UI. Chấp nhận: việc dài cần màn hình mở. |
+| iOS suspend app sau ~30 s | Đã xử lý bằng `BackgroundKeeper`: `UIBackgroundModes=audio` + audio im lặng (−100 dBFS) + `beginBackgroundTask` dự phòng. Chỉ mất khi Force Quit hoặc thiếu RAM/nhiệt. |
 | App bị kill khi thiếu RAM | Giới hạn 2.5 GB, giải phóng cache page của QEMU, cảnh báo khi guest > 85%. |
 | Không có swap thật | Tạo swapfile 512 MB trong overlay (chậm nhưng tránh OOM). |
 | Keyboard tiếng Việt | Terminal dùng `UITextInput` của SwiftTerm; cần test Telex/VNI. Fallback: dán (paste). |

@@ -64,6 +64,7 @@ final class ConsoleShell: ObservableObject {
                 """
                 Lệnh chạy thật trên máy:
                   jit              trạng thái JIT + cờ code signing
+                  bg [on|off]      giữ app chạy khi ra nền
                   mem              RAM, nhiệt, tiết kiệm pin
                   uname            kernel iOS thật
                   df               dung lượng sandbox
@@ -82,6 +83,9 @@ final class ConsoleShell: ObservableObject {
 
         case "jit":
             printJIT()
+
+        case "bg":
+            handleBackground(arguments.first)
 
         case "mem":
             printMemory()
@@ -140,8 +144,39 @@ final class ConsoleShell: ObservableObject {
         }
     }
 
-    private func printMemory() {
-        let info = ProcessInfo.processInfo
+    private func handleBackground(_ argument: String?) {
+        let keeper = BackgroundKeeper.shared
+
+        switch argument?.lowercased() {
+        case .some("on"), .some("start"):
+            keeper.start()
+        case .some("off"), .some("stop"):
+            keeper.stop()
+        default:
+            break
+        }
+
+        append("Giữ nền: \(keeper.stateText)", keeper.isAudioRunning ? .success : .output)
+        append(
+            "UIBackgroundModes: \(keeper.hasBackgroundAudioMode ? "audio ✓" : "THIẾU — build sai Info.plist")",
+            keeper.hasBackgroundAudioMode ? .output : .error
+        )
+        append("Audio session: \(keeper.category)", .output)
+        append("Route: \(keeper.route)", .output)
+        if keeper.isAudioRunning {
+            append("Đã giữ: \(keeper.uptimeText)", .output)
+        }
+        if keeper.backgroundTaskActive {
+            append("Gia hạn tạm: còn ~30 giây (iOS background task).", .output)
+        }
+        append("Gián đoạn audio: \(keeper.interruptionCount) lần", .output)
+        if let error = keeper.lastError {
+            append(error, .error)
+        }
+        append("Rời app thì vẫn chạy. Vuốt khỏi đa nhiệm thì tắt. Tốn pin, ấm máy.", .info)
+    }
+
+    private func printMemory() {        let info = ProcessInfo.processInfo
         let physical = Int(info.physicalMemory / 1_048_576)
         append("RAM vật lý: \(physical) MB", .output)
         append("CPU: \(info.processorCount) nhân · \(info.activeProcessorCount) đang hoạt động", .output)
@@ -239,6 +274,7 @@ final class ConsoleShell: ObservableObject {
         } else {
             append("Image: chưa cài", .output)
         }
+        append("Giữ nền: \(BackgroundKeeper.shared.stateText)", BackgroundKeeper.shared.isAudioRunning ? .success : .output)
         append("→ Chưa boot được Linux. Không có lệnh nào giả ở đây.", .info)
     }
 
