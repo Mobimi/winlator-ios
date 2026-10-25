@@ -6,3 +6,4 @@
 *.md text eol=lf
 *.swift text eol=lf
 *.json text eol=lf
+*.patch text eol=lf
