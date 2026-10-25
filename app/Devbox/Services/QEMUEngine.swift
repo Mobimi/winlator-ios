@@ -45,6 +45,7 @@ final class QEMUEngine: ObservableObject {
     @Published private(set) var guestBooted = false
     @Published private(set) var guestAliveAt: Date?
     @Published private(set) var lastStage = "chưa chạy"
+    @Published private(set) var execNote = ""
 
     let consolePort = DevboxConfig.consolePort
     let qmpPort = DevboxConfig.qmpPort
@@ -61,6 +62,7 @@ final class QEMUEngine: ObservableObject {
     private var bootMonitor: Timer?
     private var probeEarlyDone = false
     private var probeLateDone = false
+    private static var lastPC = "?"
 
     fileprivate static var runningThread: pthread_t?
     fileprivate static var exitCalled = false
@@ -105,9 +107,12 @@ final class QEMUEngine: ObservableObject {
         let share = DevboxConfig.shareDirectory
         try? FileManager.default.createDirectory(at: share, withIntermediateDirectories: true)
 
-        let jit = Self.probeExecMemory()
         logLines = []
         prepareLog()
+        Self.trace("=== start ===")
+        let jit = Self.probeExecMemory()
+        execNote = jit.note
+        Self.trace("exec memory: \(jit.note)")
         guard jit.execOK else {
             Self.trace("exec memory probe failed: \(jit.note)")
             refreshLog()
@@ -125,13 +130,11 @@ final class QEMUEngine: ObservableObject {
         startedAt = Date()
         Self.exitCalled = false
 
-        Self.trace("=== start ===")
         Self.trace("app: \(Bundle.main.bundlePath)")
         Self.trace("engine: \(dylib.path)")
         Self.trace("engine exists=\(FileManager.default.fileExists(atPath: dylib.path)) size=\(Self.fileSize(dylib)) sha256=\(Self.fileDigest(dylib))")
         Self.trace("frameworks: \(Self.frameworkNames(in: frameworks).joined(separator: ", "))")
         Self.trace("jit: \(DeviceProbe.jitState().title) debugged=\(DeviceProbe.isDebugged())")
-        Self.trace("exec memory: \(jit.note)")
         Self.trace("memory: available=\(availableMemory) MB requested=\(memoryMB) MB using=\(memory) MB footprint=\(DeviceProbe.footprintMB()) MB")
         Self.trace("share: \(share.path)")
         Self.trace("args: \(arguments.joined(separator: " "))")
@@ -239,16 +242,21 @@ final class QEMUEngine: ObservableObject {
         let log = persistedLog()
         lines.append("== qemu.log (\(log.utf8.count) byte) ==")
         lines.append(log.isEmpty ? "(trống)" : log)
+        let serial = (try? String(contentsOf: DevboxConfig.serialLogURL, encoding: .utf8)) ?? ""
+        lines.append("== serial.log (\(serial.utf8.count) byte) ==")
+        lines.append(serial.isEmpty ? "(trống)" : String(serial.suffix(3000)))
         return lines.joined(separator: "\n")
     }
 
     private func buildArguments(image: InstalledImage, share: URL, cpuCount: Int, memoryMB: Int, tbSize: Int) -> [String] {
+        let single = UserDefaults.standard.bool(forKey: "devbox.singleCPU")
+        let cpus = single ? 1 : cpuCount
         var args: [String] = ["qemu-system-aarch64"]
         args += ["-M", "virt,highmem=on"]
         args += ["-cpu", "max"]
-        args += ["-smp", "\(cpuCount)"]
+        args += ["-smp", "\(cpus)"]
         args += ["-m", "\(memoryMB)"]
-        args += ["-accel", "tcg,thread=multi,tb-size=\(tbSize)"]
+        args += ["-accel", "tcg,thread=\(single ? "single" : "multi"),tb-size=\(tbSize)"]
         args += ["-rtc", "base=utc,clock=host"]
         args += ["-kernel", image.kernel.path]
         args += ["-initrd", image.initrd.path]
@@ -261,9 +269,10 @@ final class QEMUEngine: ObservableObject {
         args += ["-device", "virtio-net-pci,netdev=n0,romfile="]
         args += ["-object", "rng-random,filename=/dev/urandom,id=rng0"]
         args += ["-device", "virtio-rng-pci,rng=rng0"]
-        args += ["-chardev", "socket,id=con,host=127.0.0.1,port=\(consolePort),server=on,wait=off"]
+        args += ["-chardev", "socket,id=con,host=127.0.0.1,port=\(consolePort),server=on,wait=off,logfile=\(DevboxConfig.serialLogURL.path)"]
         args += ["-serial", "chardev:con"]
         args += ["-qmp", "tcp:127.0.0.1:\(qmpPort),server=on,wait=off"]
+        args += ["-d", "guest_errors"]
         args += ["-display", "none"]
         args += ["-nodefaults"]
         args += ["-no-user-config"]
@@ -396,6 +405,7 @@ final class QEMUEngine: ObservableObject {
             try? fm.moveItem(at: url, to: previous)
         }
         fm.createFile(atPath: url.path, contents: nil)
+        try? fm.removeItem(at: DevboxConfig.serialLogURL)
         logURL = url
         QEMUEngine.openTrace(url: url)
     }
@@ -449,19 +459,50 @@ final class QEMUEngine: ObservableObject {
             probeEarlyDone = true
         }
         let qmp = qmpPort
+        let rootfs = InstalledImage.load()?.rootfs
         DispatchQueue.global(qos: .utility).async {
-            let status = QMPClient.probe(port: qmp, timeout: 2)
-            let disk = QMPClient.diskReadBytes(port: qmp, timeout: 2)
-            let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
-            let openText: String
-            switch open {
-            case .some(true): openText = "có client"
-            case .some(false): openText = "không client"
-            case .none: openText = "?"
-            }
+            let status = QMPClient.probe(port: qmp, timeout: 3)
+            let registers = QMPClient.hmp("info registers", port: qmp, timeout: 3) ?? ""
+            let cpuStatus = (QMPClient.hmp("info status", port: qmp, timeout: 3) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let cpus = (QMPClient.hmp("info cpus", port: qmp, timeout: 3) ?? "").split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.joined(separator: " | ")
+            let jit = (QMPClient.hmp("info jit", port: qmp, timeout: 3) ?? "").split(separator: "\n").first.map(String.init) ?? ""
+            let open = QMPClient.chardevOpen(port: qmp, timeout: 3)
+            let disk = QMPClient.diskReadBytes(port: qmp, timeout: 3)
             let diskText = disk.map { "\($0) B" } ?? "?"
-            QEMUEngine.trace("guest: t+\(Int(age))s · qmp=\(status) · đĩa đọc=\(diskText) · serial=\(openText)")
+            let pc = QEMUEngine.pcValue(registers)
+            let previous = QEMUEngine.lastPC
+            QEMUEngine.lastPC = pc
+            let instructions = pc == "?" ? "" : (QMPClient.hmp("xp /6i \(pc)", port: qmp, timeout: 3) ?? "")
+            let kernelHead = QMPClient.hmp("xp /16wx 0x40000000", port: qmp, timeout: 3) ?? ""
+            let mtime = rootfs.flatMap { url -> String? in
+                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                guard let date = values?.contentModificationDate else { return nil }
+                return String(format: "%.0f", date.timeIntervalSince1970)
+            } ?? "?"
+            QEMUEngine.trace("guest: t+\(Int(age))s · qmp=\(status) · \(cpuStatus) · pc=\(pc) (trước \(previous)) · đĩa đọc=\(diskText) · serial=\(QEMUEngine.describe(open)) · tb=\(jit) · rootfs_mtime=\(mtime)")
+            QEMUEngine.trace("cpus: \(String(cpus.prefix(400)))")
+            QEMUEngine.trace("mã tại pc: \(String(instructions.replacingOccurrences(of: "\n", with: " | ").prefix(300)))")
+            QEMUEngine.trace("ram 0x40000000: \(String(kernelHead.replacingOccurrences(of: "\n", with: " | ").prefix(300)))")
+            guard late else { return }
+            let rawChardev = QMPClient.raw("{\"execute\":\"query-chardev\"}", port: qmp, timeout: 3)
+            let rawBlock = QMPClient.raw("{\"execute\":\"query-blockstats\"}", port: qmp, timeout: 3)
+            QEMUEngine.trace("qmp raw chardev: \(String(rawChardev.prefix(400)))")
+            QEMUEngine.trace("qmp raw blockstats: \(String(rawBlock.prefix(400)))")
+            let head = registers.split(separator: "\n").prefix(4).joined(separator: " | ")
+            QEMUEngine.trace("qmp registers: \(String(head.prefix(600)))")
         }
+    }
+
+    private static func describe(_ value: Bool?) -> String {
+        guard let value else { return "?" }
+        return value ? "có client" : "không client"
+    }
+
+    private static func pcValue(_ registers: String) -> String {
+        guard let range = registers.range(of: "PC=") else { return "?" }
+        let tail = registers[range.upperBound...]
+        let digits = tail.prefix { $0.isHexDigit }
+        return digits.isEmpty ? "?" : "0x" + String(digits)
     }
 
     private func stopBootMonitor() {
@@ -562,11 +603,12 @@ final class QEMUEngine: ObservableObject {
             let bytes = megabytes << 20
             let mapping = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
             if let pointer = mapping.pointer {
+                let exec = runCodeTest(pointer)
                 munmap(pointer, bytes)
                 let tb = min(megabytes, 256)
                 let note = failures.isEmpty
-                    ? "RWX \(megabytes) MB OK · tb-size=\(tb)"
-                    : "RWX \(megabytes) MB OK · tb-size=\(tb) · bị chặn: \(failures.joined(separator: ", "))"
+                    ? "RWX \(megabytes) MB OK · tb-size=\(tb) · \(exec)"
+                    : "RWX \(megabytes) MB OK · tb-size=\(tb) · \(exec) · bị chặn: \(failures.joined(separator: ", "))"
                 return ExecProbe(execOK: true, tbSize: tb, note: note)
             }
             failures.append("\(megabytes) MB errno \(mapping.code)")
@@ -585,12 +627,37 @@ final class QEMUEngine: ObservableObject {
         return ExecProbe(execOK: false, tbSize: 0, note: "mmap RWX bị chặn: \(failures.joined(separator: ", "))")
     }
 
+    private static func runCodeTest(_ pointer: UnsafeMutableRawPointer) -> String {
+        let words: [UInt32] = [0x52800540, 0xD65F03C0]
+        let code = pointer.assumingMemoryBound(to: UInt32.self)
+        devbox_jit_writable(true)
+        for (index, word) in words.enumerated() {
+            code[index] = word
+        }
+        devbox_icache_invalidate(pointer, words.count * 4)
+        let written = code[0]
+        let writtenText = "0x" + String(written, radix: 16)
+        QEMUEngine.trace("jit-exec: đọc lại bộ nhớ = \(writtenText) (cần 0x52800540)")
+        guard written == words[0] else {
+            devbox_jit_writable(false)
+            return "ghi mã máy bị nuốt (\(writtenText))"
+        }
+        devbox_jit_writable(false)
+        QEMUEngine.trace("jit-exec: gọi mã máy vừa ghi")
+        typealias Probe = @convention(c) () -> Int32
+        let function = unsafeBitCast(pointer, to: Probe.self)
+        let value = function()
+        QEMUEngine.trace("jit-exec: trả về \(value)")
+        return value == 42 ? "chạy mã OK" : "chạy mã SAI (\(value))"
+    }
+
     private static func codeMemoryTest() -> [String] {
         var lines: [String] = []
 
         let small = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
         if let pointer = small.pointer {
             lines.append("mmap 16 MB RWX: OK")
+            lines.append("chạy thử mã máy: \(runCodeTest(pointer))")
             munmap(pointer, 16 << 20)
         } else {
             lines.append("mmap 16 MB RWX: LỖI errno \(small.code) (\(String(cString: strerror(small.code))))")
@@ -650,6 +717,16 @@ final class QEMUEngine: ObservableObject {
             _ = write(traceFD, base, buffer.count)
         }
     }
+}
+
+@_silgen_name("sys_icache_invalidate")
+private func devbox_icache_invalidate(_ start: UnsafeMutableRawPointer?, _ length: Int)
+
+@_silgen_name("pthread_jit_write_protect_np")
+private func devbox_jit_write_protect(_ enabled: Int32)
+
+private func devbox_jit_writable(_ writable: Bool) {
+    devbox_jit_write_protect(writable ? 0 : 1)
 }
 
 private func devboxExitGuard() {

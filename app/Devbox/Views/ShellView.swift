@@ -237,13 +237,13 @@ struct ShellView: View {
                     stripButton("Nối lại") { reconnectConsole() }
                 }
             } else {
-                strip(.orange, "waveform.slash", "Console đã nối nhưng chưa có dữ liệu", "\(heartbeatText) — bấm Nối lại để mở lại cổng serial") {
+                strip(.orange, "waveform.slash", "Guest chưa in ra serial", "\(heartbeatText) — xem logs/serial.log trong Files hoặc gửi file đó cho tác giả") {
                     stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
                     stripButton("Nối lại") { reconnectConsole() }
                 }
             }
         } else if model.silent {
-            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · tự mở lại \(guest.autoRecoveries) lần.") {
+            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · xem logs/serial.log") {
                 stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
                 stripButton("Nối lại") { reconnectConsole() }
             }

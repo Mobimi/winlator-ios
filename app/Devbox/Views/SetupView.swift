@@ -8,6 +8,7 @@ struct SetupView: View {
     @ObservedObject private var engine = QEMUEngine.shared
     @StateObject private var ports = PortWatcher()
     @AppStorage("devbox.keepRunning") private var keepRunning = true
+    @AppStorage("devbox.singleCPU") private var singleCPU = false
     @State private var copied = false
     @State private var preview: PreviewTarget?
     @State private var engineCheck: String?
@@ -153,6 +154,13 @@ struct SetupView: View {
                     }
                     LabeledContent("Console", value: "127.0.0.1:\(engine.consolePort)")
                     LabeledContent("QMP", value: "127.0.0.1:\(engine.qmpPort)")
+                    Toggle("Chế độ chắc chắn (1 CPU, chậm hơn)", isOn: $singleCPU)
+                        .disabled(engine.isRunning || engine.state == .starting)
+                    if singleCPU {
+                        Text("Tắt tuỳ chọn này để chạy 4 CPU nhanh hơn. Nếu bật mà boot được thì giữ nguyên, báo lại để tác giả tối ưu.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     LabeledContent("Bước cuối", value: engine.lastStage)
                     if engine.isRunning {
                         LabeledContent("Đã chạy", value: engine.uptimeText)

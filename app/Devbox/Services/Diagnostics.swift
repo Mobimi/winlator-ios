@@ -26,6 +26,7 @@ enum Diagnostics {
         lines.append("UIBackgroundModes: \(backgroundModes())")
         lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
         lines.append("Bước cuối: \(engine.lastStage)")
+        lines.append("JIT chạy mã: \(engine.execNote.isEmpty ? "chưa thử" : engine.execNote)")
         lines.append("Image: \(imageState())")
         if !engine.logLines.isEmpty {
             lines.append("QEMU log:")
@@ -38,6 +39,7 @@ enum Diagnostics {
         if let error = keeper.lastError {
             lines.append("Lỗi nền: \(error)")
         }
+        lines.append(serialState())
         lines.append("Nhiệt: \(thermalText()) · Pin thấp: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "có" : "không")")
         return lines.joined(separator: "\n")
     }
@@ -89,5 +91,20 @@ enum Diagnostics {
         formatter.countStyle = .file
         let size = (try? image.rootfs.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         return "\(image.manifest.suite) · rootfs \(formatter.string(fromByteCount: Int64(size)))"
+    }
+
+    private static func serialState() -> String {
+        let url = DevboxConfig.serialLogURL
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+            return "serial.log: (trống, guest chưa in gì)"
+        }
+        var lines: [String] = []
+        lines.append("serial.log (\(data.count) byte), cuối file:")
+        let text = String(decoding: data.suffix(4000), as: UTF8.self)
+        for line in text.split(separator: "\r", omittingEmptySubsequences: false).suffix(14) {
+            let clean = String(line).replacingOccurrences(of: "\n", with: "")
+            lines.append("  \(String(clean.prefix(200)))")
+        }
+        return lines.joined(separator: "\n")
     }
 }

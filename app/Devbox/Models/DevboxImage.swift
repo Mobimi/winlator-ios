@@ -27,6 +27,10 @@ enum DevboxConfig {
         logsDirectory.appendingPathComponent("diagnostics.txt")
     }
 
+    static var serialLogURL: URL {
+        logsDirectory.appendingPathComponent("serial.log")
+    }
+
     static var imagesRoot: URL { root.appendingPathComponent("images", isDirectory: true) }
     static var imageDirectory: URL { imagesRoot.appendingPathComponent(slug, isDirectory: true) }
     static var shareDirectory: URL { root.appendingPathComponent("share", isDirectory: true) }
