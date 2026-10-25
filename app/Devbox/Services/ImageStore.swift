@@ -130,7 +130,7 @@ final class ImageStore: ObservableObject {
             result = outcome
             semaphore.signal()
         }
-        downloader.start(url: file.url(for: file))
+        downloader.start(url: file.remoteURL)
         semaphore.wait()
 
         if case .failure(let error) = result {

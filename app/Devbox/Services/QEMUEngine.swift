@@ -55,7 +55,7 @@ final class QEMUEngine: ObservableObject {
     private var logTimer: Timer?
     private var watchdog: Timer?
 
-    private static var runningThread: pthread_t?
+    fileprivate static var runningThread: pthread_t?
     private static var guardInstalled = false
 
     private init() {}
@@ -115,7 +115,6 @@ final class QEMUEngine: ObservableObject {
 
     func stop() {
         guard state.isActive else { return }
-        stopRequested = true
         let port = qmpPort
         DispatchQueue.global(qos: .userInitiated).async {
             QMPClient.quit(port: port, timeout: 4)

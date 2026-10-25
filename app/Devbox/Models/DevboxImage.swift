@@ -46,6 +46,12 @@ struct ImageManifest: Codable {
     }
 }
 
+extension ImageManifest.FileRef {
+    var remoteURL: URL {
+        URL(string: DevboxConfig.imageRelease + "/" + file)!
+    }
+}
+
 struct InstalledImage {
     var directory: URL
     var manifest: ImageManifest

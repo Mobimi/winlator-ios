@@ -63,8 +63,7 @@ final class GuestConsole: ObservableObject {
     }
 
     func sendControl(_ code: UInt8) {
-        guard let scalar = UnicodeScalar(code) else { return }
-        send(String(Character(scalar)))
+        send(String(Character(Unicode.Scalar(code))))
     }
 
     func sendKey(_ key: TerminalKey) {

@@ -19,7 +19,7 @@ final class Zstd {
     private typealias CreateFn = @convention(c) () -> OpaquePointer?
     private typealias InitFn = @convention(c) (OpaquePointer?) -> Int
     private typealias FreeFn = @convention(c) (OpaquePointer?) -> Int
-    private typealias DecompressFn = @convention(c) (OpaquePointer?, UnsafeMutablePointer<ZSTD_outBuffer>, UnsafeMutablePointer<ZSTD_inBuffer>) -> Int
+    private typealias DecompressFn = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Int
     private typealias IsErrorFn = @convention(c) (Int) -> UInt32
     private typealias ErrorNameFn = @convention(c) (Int) -> UnsafePointer<CChar>?
 
@@ -138,7 +138,11 @@ final class Zstd {
             }
 
             outBuffer.pos = 0
-            let result = decompressFn(stream, &outBuffer, &inBuffer)
+            let result = withUnsafeMutablePointer(to: &outBuffer) { outPointer in
+                withUnsafeMutablePointer(to: &inBuffer) { inPointer in
+                    decompressFn(stream, UnsafeMutableRawPointer(outPointer), UnsafeMutableRawPointer(inPointer))
+                }
+            }
             if let isErrorFn, isErrorFn(result) != 0 {
                 throw InstallError.zstd(errorName(result))
             }
