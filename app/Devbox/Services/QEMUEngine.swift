@@ -63,6 +63,7 @@ final class QEMUEngine: ObservableObject {
     private static let traceLock = NSLock()
     private static var traceFD: Int32 = -1
     private static let timeBase = ProcessInfo.processInfo.systemUptime
+    private static let devboxMapJit: Int32 = 0x0800
 
     private init() {}
 
@@ -469,10 +470,9 @@ final class QEMUEngine: ObservableObject {
         var note: String
     }
 
-    private static func mapMemory(_ bytes: Int, exec: Bool) -> (pointer: UnsafeMutableRawPointer?, code: Int32) {
-        let protection = exec ? PROT_READ | PROT_WRITE | PROT_EXEC : PROT_READ | PROT_WRITE
+    private static func mapMemory(_ bytes: Int, protection: Int32, flags: Int32 = MAP_PRIVATE | MAP_ANONYMOUS) -> (pointer: UnsafeMutableRawPointer?, code: Int32) {
         errno = 0
-        let pointer = mmap(nil, bytes, protection, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+        let pointer = mmap(nil, bytes, protection, flags, -1, 0)
         let code = errno
         if let pointer, UInt(bitPattern: pointer) != UInt.max {
             return (pointer, 0)
@@ -484,7 +484,7 @@ final class QEMUEngine: ObservableObject {
         var failures: [String] = []
         for megabytes in [256, 192, 128, 64, 32, 16] {
             let bytes = megabytes << 20
-            let mapping = mapMemory(bytes, exec: true)
+            let mapping = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
             if let pointer = mapping.pointer {
                 munmap(pointer, bytes)
                 let tb = min(megabytes, 256)
@@ -496,7 +496,7 @@ final class QEMUEngine: ObservableObject {
             failures.append("\(megabytes) MB errno \(mapping.code)")
         }
 
-        let reclaim = mapMemory(16 << 20, exec: false)
+        let reclaim = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE)
         if let pointer = reclaim.pointer {
             errno = 0
             let result = mprotect(pointer, 16 << 20, PROT_READ | PROT_EXEC)
@@ -512,7 +512,7 @@ final class QEMUEngine: ObservableObject {
     private static func codeMemoryTest() -> [String] {
         var lines: [String] = []
 
-        let small = mapMemory(16 << 20, exec: true)
+        let small = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
         if let pointer = small.pointer {
             lines.append("mmap 16 MB RWX: OK")
             munmap(pointer, 16 << 20)
@@ -520,7 +520,7 @@ final class QEMUEngine: ObservableObject {
             lines.append("mmap 16 MB RWX: LỖI errno \(small.code) (\(String(cString: strerror(small.code))))")
         }
 
-        let big = mapMemory(256 << 20, exec: true)
+        let big = mapMemory(256 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
         if let pointer = big.pointer {
             lines.append("mmap 256 MB RWX: OK (đủ cho tb-size=256)")
             munmap(pointer, 256 << 20)
@@ -528,7 +528,7 @@ final class QEMUEngine: ObservableObject {
             lines.append("mmap 256 MB RWX: LỖI errno \(big.code) (\(String(cString: strerror(big.code))))")
         }
 
-        let reclaim = mapMemory(16 << 20, exec: false)
+        let reclaim = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE)
         if let pointer = reclaim.pointer {
             errno = 0
             if mprotect(pointer, 16 << 20, PROT_READ | PROT_EXEC) == 0 {
@@ -539,6 +539,14 @@ final class QEMUEngine: ObservableObject {
             munmap(pointer, 16 << 20)
         } else {
             lines.append("mmap 16 MB RW: LỖI errno \(reclaim.code)")
+        }
+
+        let reserved = mapMemory(32 << 20, protection: PROT_NONE, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
+        if let pointer = reserved.pointer {
+            lines.append("mmap PROT_NONE + MAP_JIT: OK")
+            munmap(pointer, 32 << 20)
+        } else {
+            lines.append("mmap PROT_NONE + MAP_JIT: LỖI errno \(reserved.code) — QEMU bản cũ dùng cờ này nên bị chặn")
         }
 
         lines.append("Chọn: \(probeExecMemory().note)")

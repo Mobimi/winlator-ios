@@ -1,0 +1,22 @@
+--- a/tcg/region.c
++++ b/tcg/region.c
+@@ -770,17 +770,14 @@
+      */
+     prot = PROT_NONE;
+     flags = MAP_PRIVATE | MAP_ANONYMOUS;
+ #if defined(CONFIG_TCG_INTERPRETER) || defined(CONFIG_TCG_THREADED_INTERPRETER)
+     /* The tcg interpreter does not need execute permission. */
+     prot = PROT_READ | PROT_WRITE;
+-#elif defined(CONFIG_DARWIN)
+-    /* Applicable to both iOS and macOS (Apple Silicon). */
+-    if (!splitwx) {
+-        flags |= MAP_JIT;
+-    }
++#elif defined(__APPLE__)
++    prot = PROT_READ | PROT_WRITE | PROT_EXEC;
+ #endif
+ 
+     return alloc_code_gen_buffer_anon(size, prot, flags, errp);
+ }
+ #endif /* USE_STATIC_CODE_GEN_BUFFER, WIN32, POSIX */
+ 

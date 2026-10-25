@@ -207,6 +207,11 @@ meson_build "$SLIRP_DIR"
 
 QEMU_FILE="$(fetch "$QEMU_URL" "$QEMU_SHA")"
 QEMU_DIR="$(unpack "$QEMU_FILE")"
+if [ ! -f "$QEMU_DIR/.devbox-patched" ]; then
+    log "patch qemu ios jit"
+    patch -d "$QEMU_DIR" -p1 < "$ROOT/engine/patches/qemu-ios-jit.patch"
+    touch "$QEMU_DIR/.devbox-patched"
+fi
 
 ZSTD_FILE="$(fetch "$ZSTD_URL" "$ZSTD_SHA")"
 ZSTD_DIR="$(unpack "$ZSTD_FILE")"
