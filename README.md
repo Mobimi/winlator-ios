@@ -143,4 +143,5 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 | [`docs/00-bat-dau.md`](docs/00-bat-dau.md) | Cài app lên iPhone: GitHub Actions → Sideloadly → StikDebug |
 | [`docs/01-kien-truc.md`](docs/01-kien-truc.md) | Kiến trúc, QEMU config, guest image, port forward, giới hạn |
 | [`docs/02-lo-trinh.md`](docs/02-lo-trinh.md) | Mốc M0–M4, tiêu chí nghiệm thu, ước lượng |
+| [`docs/03-cli.md`](docs/03-cli.md) | CLI chạy được gì / chậm gì / không chạy được, giới hạn RAM–đĩa, bài test nghiệm thu |
 | [`docs/archive-winlator/`](docs/archive-winlator/) | Tài liệu cũ của hướng Winlator (để tham khảo, không còn triển khai) |

@@ -1,0 +1,116 @@
+# 03 — CLI chạy được gì, không chạy được gì
+
+Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay chỉ là demo?"*
+
+## Trả lời ngắn
+
+| Giai đoạn | CLI |
+|---|---|
+| **Hiện tại (M0)** | **Không.** Console chỉ chạy lệnh chẩn đoán thật (`jit`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo "chưa nối engine". Không có kết quả giả. |
+| **Sau M1** | **Có.** Guest là Debian 13 ARM64 thật, nên `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. |
+| **Sau M2** | Có + chia sẻ file + dev server tự mở trong app. |
+
+CLI là phần **dễ** của kiến trúc này: QEMU lo giả lập CPU, CLI chỉ cần stdin/stdout và syscall. Không cần GPU. Phần khó là boot máy ảo và nối terminal — không phải chạy lệnh.
+
+## Vì sao chắc chắn chạy được (không phải phỏng đoán)
+
+Image đã build thật ngày 2026-10-25 (`image/build-image.sh`, runner `ubuntu-24.04-arm`):
+
+- Debian 13 (trixie) ARM64, glibc, systemd
+- Kernel `6.12.113+deb13-arm64`
+- Python `3.13.5`, pip `25.1.1`, `venv`, header dev
+- Node `v22.23.4` + `npm` + `npx` (tarball chính thức, sha256 khớp)
+- `git 2.47.3`, `gcc 14.2`, `make 4.4.1`, `pkg-config`
+- `curl 8.14.1`, `wget 1.25.0`, `nano 8.4`, `less`, `htop 3.4.1`
+- `sudo` (user `dev`, không mật khẩu), `apt`, `unzip`, `xz`, `gnupg`
+
+Đây là userland Linux bình thường. Bất cứ thứ gì `apt`/`pip`/`npm` cài được cho **linux-arm64** đều chạy được trong đó.
+
+## Ma trận khả năng
+
+### Chạy tốt
+
+- Shell script, `bash`, biến môi trường, pipe, `grep/sed/awk`
+- `git clone` / `commit` / `push` (cần mạng)
+- `python3`, `venv`, `pip install` các gói **có wheel arm64** (requests, flask, fastapi, pydantic, pillow…)
+- `node`, `npm install` dự án vừa, `npx`, chạy script Node
+- `uvicorn` / `flask run` / `npm run dev` → web preview trong app (M2)
+- `gcc` biên dịch C nhỏ, `make` dự án vừa
+- `curl` gọi API, `sqlite3` (qua Python, hoặc `apt install sqlite3`)
+- `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (`apt install` được)
+
+### Chạy được nhưng chậm
+
+| Việc | Thực tế trên A14 (ước tính, sẽ đo ở M1) |
+|---|---|
+| `npm install` dự án Vite/Express | 1–3 phút |
+| `npm install` Next.js / Angular | 5–15 phút, dễ OOM nếu ít RAM |
+| `pip install numpy/pandas` (có wheel) | 30–90 giây |
+| `pip install` phải biên dịch từ source | 5–20 phút |
+| `tsc` / `jest` / `pytest` suite lớn | chậm 5–15× so với laptop |
+| `cargo build` / build C++ lớn | rất chậm, chỉ nên làm việc nhỏ |
+
+Nguyên nhân: iOS **không cho virtualization phần cứng**, nên QEMU phải dịch từng instruction (TCG). Kể cả guest cùng kiến trúc arm64 với máy, vẫn là dịch phần mềm → chậm hơn native nhiều lần.
+
+### Không chạy được (giới hạn thật, không phải lỗi app)
+
+- App GUI: GTK, Qt, Electron, game, desktop Linux
+- Trình duyệt / Playwright / Chromium headless (nặng, gần như chắc chắn OOM)
+- Docker/Kubernetes cho công việc thật (về lý thuyết guest kernel chạy được, nhưng đĩa + RAM + tốc độ làm nó vô nghĩa)
+- Xcode, build iOS/macOS
+- CUDA/GPU, train ML
+- Build LLVM/Chromium từ source
+
+## Ngân sách tài nguyên (số thật)
+
+| Thứ | Hiện tại | Ghi chú |
+|---|---|---|
+| Đĩa guest | 1.73 GB đã dùng / 5 GB | còn ~3.2 GB; có thể tăng image lên 16–32 GB |
+| RAM guest | 2.5 GB | iOS chỉ cho app ~3–3.5 GB; thêm zram 1 GB ở M2 |
+| CPU | 4 vCPU (TCG đa luồng) | A14 |
+| Pin/nhiệt | — | build liên tục sẽ throttle sau 15–20 phút |
+| Nền | — | iOS treo app sau ~30 giây ở nền; `npm install` dài phải giữ app mở |
+
+## Bài test nghiệm thu (sẽ chạy ở M1/M2)
+
+Copy nguyên khối này vào terminal của app; **pass** = mọi lệnh in kết quả thật, không có dòng "chưa nối engine":
+
+```bash
+uname -a                  # Linux devbox 6.12.113+deb13-arm64 ... aarch64 GNU/Linux
+python3 --version         # Python 3.13.5
+node -v                   # v22.23.4
+npm -v
+git --version
+gcc --version
+
+pip install requests
+python3 -c "import requests; print('requests', requests.__version__)"
+
+mkdir -p ~/projects/test && cd ~/projects/test
+npm init -y
+npm install express
+node -e "require('express'); console.log('express ok')"
+
+printf '#include <stdio.h>\nint main(){puts("hello from linux");}\n' > h.c
+gcc h.c -o h && ./h
+df -h /
+```
+
+## "Toàn diện" nghĩa là gì — và không là gì
+
+Toàn diện **trong phạm vi CLI Linux**: gần như mọi thứ bạn gõ trên VPS Debian đều chạy, chỉ chậm hơn và bị giới hạn RAM/đĩa.
+
+Không phải "máy tính Linux thay laptop": không GUI, không GPU, không build nặng.
+
+Nếu cần "toàn diện" hơn nữa:
+
+| Nhu cầu | Cách làm |
+|---|---|
+| Editor/IDE | M4: chạy `code-server` trong guest → VS Code mở trong WKWebView của app, không cần GUI |
+| SSH vào server thật | `apt install openssh-client` |
+| Nhiều dự án lớn cùng lúc | tăng image + zram; vẫn bị giới hạn 2.5 GB RAM |
+| GUI app | ngoài phạm vi (cần virtio-gpu + display stack) |
+
+## Bạn cần chốt
+
+Danh sách CLI bạn thực sự dùng hằng ngày (ví dụ: `python + pip + pandas`, `node + npm + vite`, `git`, `gcc`, `ssh`, `sqlite3`, `ffmpeg`…). Mình sẽ đưa đúng danh sách đó vào acceptance test và cài sẵn trong image, thay vì đoán.
