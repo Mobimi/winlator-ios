@@ -73,6 +73,7 @@ final class QEMUEngine: ObservableObject {
     private var thread: Thread?
     private var handle: UnsafeMutableRawPointer?
     private var logURL: URL?
+    private var logSize: UInt64 = 0
     private var logTimer: Timer?
     private var watchdog: Timer?
     private var bootMonitor: Timer?
@@ -230,10 +231,20 @@ final class QEMUEngine: ObservableObject {
     }
 
     func refreshLog() {
-        guard let logURL, let data = try? Data(contentsOf: logURL) else { return }
+        guard let logURL else { return }
+        // qemu.log thường không đổi giữa các tick; đọc lại cả file rồi publish
+        // 400 dòng mỗi 0,7 giây sẽ ép mọi view quan sát engine render lại.
+        let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path)
+        let size = (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+        guard size != logSize || logLines.isEmpty else { return }
+        logSize = size
+        guard let data = try? Data(contentsOf: logURL) else { return }
         let text = String(decoding: data, as: UTF8.self)
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        logLines = Array(lines.suffix(400))
+        let next = Array(lines.suffix(400))
+        if next != logLines {
+            logLines = next
+        }
     }
 
     func persistedLog() -> String {
@@ -492,6 +503,7 @@ final class QEMUEngine: ObservableObject {
         // bật ngay từ mtime cũ trước khi guest thật sự chạy portwatch.
         try? fm.removeItem(at: DevboxConfig.shareDirectory.appendingPathComponent(".ports"))
         logURL = url
+        logSize = 0
         QEMUEngine.openTrace(url: url)
     }
 
@@ -521,7 +533,9 @@ final class QEMUEngine: ObservableObject {
             if let values = try? marker.resourceValues(forKeys: [.contentModificationDateKey]),
                let modified = values.contentModificationDate,
                modified >= (self.startedAt ?? .distantPast) {
-                self.guestAliveAt = modified
+                if self.guestAliveAt != modified {
+                    self.guestAliveAt = modified
+                }
                 if !self.guestBooted {
                     self.guestBooted = true
                     let seconds = Int(Date().timeIntervalSince(self.startedAt ?? Date()))

@@ -96,10 +96,14 @@ final class ShellModel: ObservableObject {
     func attach(_ guest: GuestConsole) {
         guard consoleSink == nil else { return }
         consumedTotal = guest.totalLines
-        consoleSink = guest.$lineBatch
+        // Một tín hiệu cho mỗi lần đọc socket, thay vì publish từng ký tự.
+        consoleSink = guest.$displayRevision
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] batch in self?.activity(batch) }
-        promptSink = guest.$currentLine
+            .sink { [weak self, weak guest] _ in
+                guard let self, let guest else { return }
+                self.activity(guest.lineBatch)
+            }
+        promptSink = guest.$promptLine
             .receive(on: DispatchQueue.main)
             .sink { [weak self] line in self?.promptChanged(line) }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self, weak guest] _ in
@@ -119,7 +123,7 @@ final class ShellModel: ObservableObject {
             guest.reconnect()
             return
         }
-        guard guest.shellReady else { return }
+        guard guest.acceptsInput else { return }
         let command = input.trimmingCharacters(in: .whitespacesAndNewlines)
         input = ""
         historyIndex = nil
@@ -141,7 +145,7 @@ final class ShellModel: ObservableObject {
     }
 
     func runSnippet(_ text: String, guest: GuestConsole) {
-        guard guest.connected, guest.shellReady else { return }
+        guard guest.acceptsInput else { return }
         input = ""
         deliver(text, guest: guest)
     }
@@ -195,13 +199,13 @@ final class ShellModel: ObservableObject {
     }
 
     func kill(port: Int, guest: GuestConsole) {
-        guard guest.connected, guest.shellReady else { return }
+        guard guest.acceptsInput else { return }
         begin(display: "Tắt cổng \(port)", note: "cổng \(port)", guest: guest,
               line: "fuser -k \(port)/tcp 2>/dev/null; devbox-killport \(port) 2>/dev/null; true")
     }
 
     func installExtras(guest: GuestConsole) {
-        guard guest.connected, guest.shellReady else { return }
+        guard guest.acceptsInput else { return }
         let directory = DevboxConfig.shareDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let script = directory.appendingPathComponent("devbox-extra.sh")
@@ -211,7 +215,7 @@ final class ShellModel: ObservableObject {
     }
 
     func runDiagnostics(guest: GuestConsole) {
-        guard guest.connected, guest.shellReady else { return }
+        guard guest.acceptsInput else { return }
         begin(display: "Kiểm tra console", note: "chẩn đoán", guest: guest,
               line: "echo DEVBOX-PING; whoami; pwd; python3 -V; node -v")
     }
@@ -303,22 +307,31 @@ final class ShellModel: ObservableObject {
         let start = max(consumedTotal, base)
         let fresh = start < total ? Array(batch.items[(start - base)...]) : []
         consumedTotal = total
-        if let name = CommandCatalog.missingCommand(in: batch.items) {
+        if let name = CommandCatalog.missingCommand(in: fresh) {
             fix = store.fixSuggestion(for: name)
         }
         guard !fresh.isEmpty, let index = entries.indices.last else { return }
         // Dòng đến sau khi prompt đã đóng lệnh (ví dụ `stty` do app tự gửi)
         // không được gán vào kết quả của lệnh trước.
         guard entries[index].status != .done else { return }
+        // Gom rồi gán một lần: append trực tiếp vào `entries[index].output`
+        // trong vòng lặp sẽ publish `entries` mỗi dòng — với output dày đây
+        // cũng là một nguồn lag.
+        var output = entries[index].output
+        var appended = 0
         for raw in fresh {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
-            if entries[index].output.isEmpty, echoesCommand(trimmed, command: entries[index].command) { continue }
+            if output.isEmpty, echoesCommand(trimmed, command: entries[index].command) { continue }
             if isPromptOnly(trimmed) { continue }
-            entries[index].output.append(raw)
-            if entries[index].output.count > 400 {
-                entries[index].output.removeFirst(entries[index].output.count - 400)
-            }
+            output.append(raw)
+            appended += 1
+        }
+        if output.count > 400 {
+            output.removeFirst(output.count - 400)
+        }
+        if appended > 0 {
+            entries[index].output = output
         }
         if entries[index].status == .silent || entries[index].status == .waiting {
             entries[index].status = .running
@@ -348,6 +361,9 @@ final class ShellModel: ObservableObject {
         let idle = Date().timeIntervalSince(guest.lastActivity)
         let elapsed = Date().timeIntervalSince(entries[index].startedAt)
         guard elapsed > 10, idle > 10 else { return }
+        // Lệnh đang hỏi `(y/n)` / "Ok to proceed?" thì im lặng là bình thường,
+        // không được gắn nhãn "Debian không trả lời" rồi khuyên Ctrl-C.
+        guard !awaitingInput(entries[index].output, tail: guest.currentLine) else { return }
         if entries[index].output.isEmpty {
             entries[index].status = .silent
             entries[index].finishedAt = Date()
@@ -359,6 +375,26 @@ final class ShellModel: ObservableObject {
             silent = true
             state = .idle
         }
+    }
+
+    /// Output trông như đang chờ người dùng trả lời (y/n, "Ok to proceed?",
+    /// nhập mật khẩu…). Chỉ dùng để không báo nhầm "không trả lời".
+    /// `tail` là dòng đang gõ dở: npm in "Ok to proceed? (y)" không kèm `\n`
+    /// nên câu hỏi chỉ nằm ở đó, chưa vào `output`.
+    private func awaitingInput(_ output: [String], tail: String) -> Bool {
+        var text = tail.trimmingCharacters(in: .whitespaces)
+        if text.isEmpty,
+           let last = output.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            text = last.trimmingCharacters(in: .whitespaces)
+        }
+        guard !text.isEmpty else { return false }
+        if text.hasSuffix("?") || text.hasSuffix(":") { return true }
+        let lower = text.lowercased()
+        let markers = [
+            "(y/n)", "[y/n]", "(y)", "[y]", "ok to proceed", "do you want",
+            "are you sure", "proceed?", "continue?", "press any key", "password:"
+        ]
+        return markers.contains { lower.contains($0) }
     }
 
     private func echoesCommand(_ line: String, command: String) -> Bool {

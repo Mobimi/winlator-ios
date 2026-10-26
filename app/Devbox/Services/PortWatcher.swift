@@ -47,10 +47,15 @@ final class PortWatcher: ObservableObject {
         guard let current = readPorts() else {
             known = []
             probed = []
-            ports = []
+            if !ports.isEmpty {
+                ports = []
+            }
             return
         }
-        ports = current.sorted()
+        let sorted = current.sorted()
+        if sorted != ports {
+            ports = sorted
+        }
         probed.formIntersection(current)
         for port in current where !known.contains(port) && !probed.contains(port) {
             probed.insert(port)

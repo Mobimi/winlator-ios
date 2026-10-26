@@ -51,7 +51,7 @@ struct ShellView: View {
                         Button("Kiểm tra console (whoami/python3)") {
                             model.runDiagnostics(guest: guest)
                         }
-                        .disabled(!guest.connected || !guest.shellReady)
+                        .disabled(!guest.acceptsInput)
                         Button("Sao chép 20 dòng cuối") { copyTail() }
                         Divider()
                         Button("Cài gói bổ sung (tmux/ssh/rg)") {
@@ -247,16 +247,19 @@ struct ShellView: View {
             }
         } else if model.state == .sent || model.state == .running {
             // Lệnh đang chạy: prompt biến mất khỏi `currentLine` nên
-            // `guest.shellReady` = false. Không được báo "chờ prompt" ở đây.
-            EmptyView()
+            // `guest.shellReady` = false, nhưng stdin vẫn nhận được — gõ `y`
+            // khi npm hỏi "Ok to proceed? (y)" là cách duy nhất để đi tiếp.
+            strip(.cyan, "ellipsis.circle.fill", "Lệnh đang chạy", "Nếu nó hỏi y/n thì gõ câu trả lời vào ô dưới rồi gửi · Ctrl-C để ngắt") {
+                stripButton("Ctrl-C") { guest.sendKey(.controlC) }
+            }
         } else if model.silent {
             // Lệnh treo/không trả lời: prompt chưa về nên gửi lệnh mới sẽ bị
             // chèn vào stdin của lệnh đang chạy. Ctrl-C là cách ngắt an toàn.
-            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · Ctrl-C để ngắt lệnh treo") {
+            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · đang hỏi y/n thì cứ gõ câu trả lời rồi gửi · Ctrl-C để ngắt") {
                 stripButton("Ctrl-C") { guest.sendKey(.controlC) }
                 stripButton("Nối lại") { reconnectConsole() }
             }
-        } else if !guest.shellReady {
+        } else if !guest.shellSeen {
             strip(.yellow, "hourglass", "Console đã nối · chờ prompt", "getty/bash còn đang khởi động. Lệnh chỉ gửi sau khi thấy prompt dev@devbox.") {
                 stripButton("Nối lại") { reconnectConsole() }
             }
@@ -437,10 +440,7 @@ struct ShellView: View {
                 .padding(10)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: guest.rows.count) { _, _ in
-                scrollToEnd(proxy)
-            }
-            .onChange(of: guest.rows.last?.text) { _, _ in
+            .onChange(of: guest.displayRevision) { _, _ in
                 scrollToEnd(proxy)
             }
             .onAppear { scrollToEnd(proxy) }
@@ -590,10 +590,10 @@ struct ShellView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 22))
-                    .foregroundStyle(guest.connected && guest.shellReady ? Color.green : Color.white.opacity(0.25))
+                    .foregroundStyle(guest.acceptsInput ? Color.green : Color.white.opacity(0.25))
             }
             .buttonStyle(.plain)
-            .disabled(!guest.connected || !guest.shellReady)
+            .disabled(!guest.acceptsInput)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -840,8 +840,12 @@ struct ShellView: View {
             if model.state == .sent || model.state == .running {
                 return "dev@devbox · đang chạy lệnh"
             }
-            if !guest.shellReady {
+            if !guest.shellSeen {
                 return "CONSOLE ĐÃ NỐI · chờ prompt guest"
+            }
+            if !guest.shellReady {
+                // Bash đã lên nhưng đang chạy lệnh/hỏi y-n: vẫn gửi được.
+                return "dev@devbox · \(model.cwd) · chờ trả lời"
             }
             return "dev@devbox · \(model.cwd)"
         case .idle:
@@ -856,7 +860,7 @@ struct ShellView: View {
         if !guest.connected {
             return "Chưa nối console.\nBấm Khởi động ở trên, hoặc mở một dự án để QEMU boot."
         }
-        if !guest.shellReady {
+        if !guest.shellSeen {
             return "Console đã nối nhưng getty chưa in prompt.\nChờ thêm vài giây — lệnh sẽ chỉ gửi khi prompt dev@devbox xuất hiện."
         }
         return "Gõ lệnh ở ô dưới rồi bấm mũi tên xanh.\nKết quả hiện ngay tại đây.\n\nVí dụ: python3 -V · node -v · ls -la"
@@ -873,17 +877,14 @@ struct ShellView: View {
     }
 
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
-        guard let last = guest.rows.last?.id else { return }
-        withAnimation(.linear(duration: 0.1)) {
-            proxy.scrollTo(last, anchor: .bottom)
-        }
+        // Terminal cần bám đáy ngay; animation mỗi lần có dòng mới sẽ xếp
+        // hàng hàng trăm animation và làm giao diện giật.
+        proxy.scrollTo(guest.lastRowID, anchor: .bottom)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         guard let last = model.entries.last?.id else { return }
-        withAnimation(.linear(duration: 0.12)) {
-            proxy.scrollTo(last, anchor: .bottom)
-        }
+        proxy.scrollTo(last, anchor: .bottom)
     }
 
     private func copyTail() {

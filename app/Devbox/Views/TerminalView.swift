@@ -218,13 +218,8 @@ struct TerminalView: View {
                 }
                 .padding(10)
             }
-            .onChange(of: guest.rows.count) { _, _ in
-                guard let last = guest.rows.last?.id else { return }
-                proxy.scrollTo(last, anchor: .bottom)
-            }
-            .onChange(of: guest.rows.last?.text) { _, _ in
-                guard let last = guest.rows.last?.id else { return }
-                proxy.scrollTo(last, anchor: .bottom)
+            .onChange(of: guest.displayRevision) { _, _ in
+                proxy.scrollTo(guest.lastRowID, anchor: .bottom)
             }
         }
     }
@@ -347,7 +342,7 @@ struct TerminalView: View {
 
     private func submit() {
         if guestMode {
-            guard !input.isEmpty, guest.shellReady else { return }
+            guard !input.isEmpty, guest.acceptsInput else { return }
             guard guest.send(input + "\r") else { return }
             input = ""
             return
@@ -360,7 +355,7 @@ struct TerminalView: View {
 
     private func runQuick(_ command: String) {
         if guestMode {
-            guard guestLive, guest.shellReady else { return }
+            guard guestLive, guest.acceptsInput else { return }
             guest.send(command + "\r")
         } else {
             shell.run(command)

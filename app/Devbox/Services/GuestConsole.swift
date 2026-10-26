@@ -9,17 +9,32 @@ struct ConsoleLineBatch: Equatable {
 final class GuestConsole: ObservableObject {
     static let shared = GuestConsole()
 
-    @Published private(set) var lineBatch = ConsoleLineBatch(items: [], total: 0)
+    /// Không `@Published`: mỗi lần gán sẽ copy mảng 2000 dòng và bắn
+    /// `objectWillChange` cho mọi view. `displayRevision` là tín hiệu duy
+    /// nhất báo nội dung hiển thị đã đổi.
+    private(set) var lineBatch = ConsoleLineBatch(items: [], total: 0)
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
     @Published private(set) var lastError: String?
     @Published private(set) var receivedBytes = 0
-    @Published private(set) var lastActivity = Date.distantPast
+    /// Chỉ ShellModel đọc (để phát hiện lệnh treo), không view nào hiển thị
+    /// trực tiếp — nên không cần publish mỗi lần guest in ra một chunk.
+    private(set) var lastActivity = Date.distantPast
     @Published private(set) var connectedAt: Date?
     @Published private(set) var autoRecoveries = 0
     /// Prompt `dev@devbox:~$ ` đã hiện trong guest. Dùng để không gửi lệnh
     /// `cd` khi getty/bash còn đang khởi động.
     @Published private(set) var shellReady = false
+    /// Đã từng thấy prompt bash trong phiên này. Khác `shellReady`: khi một
+    /// lệnh đang chạy hoặc đang hỏi `(y/n)` thì prompt biến mất, nhưng vẫn
+    /// phải cho người dùng gửi câu trả lời vào stdin của lệnh đó.
+    @Published private(set) var shellSeen = false
+    /// Prompt thật gần nhất. Tách khỏi `currentLine` để `ShellModel` không
+    /// phải nhận thông báo cho từng ký tự output.
+    @Published private(set) var promptLine = ""
+    /// Tăng mỗi lần nội dung hiển thị đổi; view dùng số này thay vì tự
+    /// map lại toàn bộ 2000 dòng để kiểm tra thay đổi.
+    @Published private(set) var displayRevision = 0
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
@@ -49,13 +64,27 @@ final class GuestConsole: ObservableObject {
     /// đầu tiên thì tắt lại để không hiển thị trùng dòng.
     private var serialFallback = false
     private var utf8Carry: [UInt8] = []
-    @Published private(set) var currentLine = ""
+    /// Dòng cuối chưa có `\n`. Cũng không `@Published` vì nó đổi theo từng
+    /// ký tự; view chỉ cần thấy nó qua `displayRows`.
+    private(set) var currentLine = ""
 
     var lines: [String] { lineBatch.items }
     var totalLines: Int { lineBatch.total }
 
+    /// Có thể gửi vào stdin: đã thấy prompt bash ít nhất một lần, hoặc đang
+    /// đứng ngay ở prompt. Trước khi bash lên (getty/login) thì không gửi.
+    var acceptsInput: Bool { connected && (shellReady || shellSeen) }
+
     private let maxLines = 2000
     private let serialURL = DevboxConfig.serialLogURL
+    /// Bản giữ chỗ cho `lineBatch`; chỉ publish một lần mỗi lần đọc thay vì
+    /// mỗi dòng, tránh copy mảng 2000 phần tử liên tục.
+    private var lineBuffer: [String] = []
+    private var lineTotal = 0
+    private var linesDirty = false
+    /// Cache `ConsoleRow` dựng một lần cho mỗi lần đọc socket. Trước đây view
+    /// tự map 2000 dòng mỗi lần render, kể cả khi chỉ có 1 ký tự mới.
+    private var displayRows: [ConsoleRow] = []
 
     private init() {}
 
@@ -283,12 +312,17 @@ final class GuestConsole: ObservableObject {
     func clear() {
         DispatchQueue.main.async {
             self.lineBatch = ConsoleLineBatch(items: [], total: 0)
+            self.lineBuffer = []
+            self.lineTotal = 0
+            self.linesDirty = false
             self.currentLine = ""
+            self.displayRows = []
             self.pendingCR = false
             self.parser = ANSIParser()
             self.utf8Carry = []
-            // Không đụng `shellReady`: xoá màn hình chỉ xoá phần đã hiển thị,
-            // bash vẫn đang đứng ở prompt và vẫn nhận lệnh được.
+            self.displayRevision &+= 1
+            // Không đụng `shellReady`/`shellSeen`: xoá màn hình chỉ xoá phần
+            // đã hiển thị, bash vẫn đang đứng ở prompt và vẫn nhận lệnh được.
         }
     }
 
@@ -298,7 +332,11 @@ final class GuestConsole: ObservableObject {
     func resetForNewBoot() {
         DispatchQueue.main.async {
             self.lineBatch = ConsoleLineBatch(items: [], total: 0)
+            self.lineBuffer = []
+            self.lineTotal = 0
+            self.linesDirty = false
             self.currentLine = ""
+            self.displayRows = []
             self.parser = ANSIParser()
             self.pendingCR = false
             self.utf8Carry = []
@@ -309,9 +347,12 @@ final class GuestConsole: ObservableObject {
             self.lastActivity = .distantPast
             self.connectedAt = nil
             self.shellReady = false
+            self.shellSeen = false
+            self.promptLine = ""
             self.serialDisplay = true
             self.socketHeard = false
             self.serialFallback = false
+            self.displayRevision &+= 1
         }
     }
 
@@ -374,7 +415,7 @@ final class GuestConsole: ObservableObject {
                     // giữ `currentLine`. Nếu prompt vẫn còn ở cuối dòng, tính
                     // lại ngay; nếu không app sẽ chờ prompt mãi dù bash đã sẵn
                     // sàng.
-                    self.updateShellReady()
+                    self.recomputeReadiness()
                     self.socketHeard = false
                     self.serialFallback = false
                     self.connected = true
@@ -466,6 +507,11 @@ final class GuestConsole: ObservableObject {
     }
 
     private func consume(_ text: String) {
+        // Giữ dòng hiện tại trong biến cục bộ. Gán `currentLine` mỗi ký tự sẽ
+        // publish qua Combine (view và ShellModel cùng nhận) và làm String bị
+        // copy liên tục — đây là lý do console lag khi output dày.
+        var line = currentLine
+        var promptSeen: String?
         for character in text {
             if parser.isInsideSequence {
                 parser.feed(character)
@@ -474,14 +520,15 @@ final class GuestConsole: ObservableObject {
             if pendingCR {
                 if character == "\n" {
                     pendingCR = false
-                    endLine()
+                    appendLine(line)
+                    line = ""
                     continue
                 }
                 if character == "\r" {
                     continue
                 }
                 pendingCR = false
-                currentLine = ""
+                line = ""
             }
             switch character {
             case "\u{1B}":
@@ -489,29 +536,59 @@ final class GuestConsole: ObservableObject {
             case "\r":
                 pendingCR = true
             case "\n":
-                endLine()
+                appendLine(line)
+                line = ""
             case "\u{8}":
-                if !currentLine.isEmpty {
-                    currentLine.removeLast()
+                if !line.isEmpty {
+                    line.removeLast()
                 }
             case "\t":
-                currentLine += "    "
+                line += "    "
             default:
                 if let scalar = character.unicodeScalars.first, scalar.value < 0x20 {
                     continue
                 }
-                currentLine.append(character)
+                line.append(character)
+            }
+            // `hasSuffix` là phép so 2 ký tự; chỉ khi khớp mới quét cả dòng.
+            if line.hasSuffix("$ ") || line.hasSuffix("# ") {
+                if line.contains("dev@devbox") || line.contains("root@devbox") {
+                    promptSeen = line
+                }
             }
         }
-        if currentLine.count > 4000 {
-            currentLine = String(currentLine.suffix(4000))
+        if line.count > 4000 {
+            line = String(line.suffix(4000))
         }
-        updateShellReady()
+        let lineChanged = line != currentLine
+        if lineChanged {
+            currentLine = line
+        }
+        // Một lần publish cho cả chunk: dòng đã xong + dòng đang gõ. `lineBatch`
+        // và `displayRows` phải cập nhật trước khi bump `displayRevision` vì
+        // ShellModel đọc `guest.lineBatch` ngay trong sink.
+        rebuildRows(lineChanged: lineChanged)
+        // Prompt publish sau cùng để ShellModel thấy output trước khi đóng
+        // thẻ lệnh, không bị mất dòng cuối.
+        applyReadiness(line: line, promptSeen: promptSeen)
     }
 
-    private func updateShellReady() {
-        let prompt = currentLine.hasSuffix("$ ") || currentLine.hasSuffix("# ")
-        let ready = prompt && (currentLine.contains("dev@devbox") || currentLine.contains("root@devbox"))
+    /// Prompt thật: kết thúc bằng `$ `/`# ` và có tên user của image.
+    private static func isPrompt(_ line: String) -> Bool {
+        guard line.hasSuffix("$ ") || line.hasSuffix("# ") else { return false }
+        return line.contains("dev@devbox") || line.contains("root@devbox")
+    }
+
+    private func applyReadiness(line: String, promptSeen: String?) {
+        if let prompt = promptSeen {
+            if !shellSeen {
+                shellSeen = true
+            }
+            if promptLine != prompt {
+                promptLine = prompt
+            }
+        }
+        let ready = Self.isPrompt(line)
         if ready != shellReady {
             shellReady = ready
             if ready {
@@ -520,15 +597,49 @@ final class GuestConsole: ObservableObject {
         }
     }
 
-    private func endLine() {
-        let text = currentLine
-        currentLine = ""
-        var items = lineBatch.items
-        items.append(text)
-        if items.count > maxLines {
-            items.removeFirst(items.count - maxLines)
+    /// Dùng khi socket vừa nối lại: `currentLine` có thể vẫn còn prompt cũ.
+    private func recomputeReadiness() {
+        let line = currentLine
+        let ready = Self.isPrompt(line)
+        if ready {
+            shellSeen = true
+            // Publish lại để ShellModel đóng thẻ lệnh đang chờ (nó tự bỏ qua
+            // nếu thẻ đã `.done`).
+            promptLine = line
         }
-        lineBatch = ConsoleLineBatch(items: items, total: lineBatch.total + 1)
+        if ready != shellReady {
+            shellReady = ready
+        }
+    }
+
+    private func appendLine(_ text: String) {
+        lineBuffer.append(text)
+        lineTotal += 1
+        linesDirty = true
+    }
+
+    /// Dựng lại cache dòng hiển thị đúng một lần cho mỗi lần đọc socket.
+    /// Trước đây mỗi dòng mới lại copy mảng 2000 phần tử và mỗi ký tự lại
+    /// publish, khiến console chậm dần khi output dày.
+    private func rebuildRows(lineChanged: Bool) {
+        let linesChanged = linesDirty
+        if linesChanged {
+            linesDirty = false
+            if lineBuffer.count > maxLines {
+                lineBuffer.removeFirst(lineBuffer.count - maxLines)
+            }
+            lineBatch = ConsoleLineBatch(items: lineBuffer, total: lineTotal)
+        }
+        guard linesChanged || lineChanged || displayRows.isEmpty else { return }
+        var all = lineBatch.items
+        if !currentLine.isEmpty || all.isEmpty {
+            all.append(currentLine)
+        }
+        let base = max(0, lineBatch.total - all.count)
+        displayRows = all.enumerated().map {
+            ConsoleRow(id: base + $0.offset, text: $0.element)
+        }
+        displayRevision &+= 1
     }
 
     private func stopRetryTimer() {
@@ -536,24 +647,17 @@ final class GuestConsole: ObservableObject {
         retryTimer = nil
     }
 
-    var displayLines: [String] {
-        var result = lineBatch.items
-        if !currentLine.isEmpty || result.isEmpty {
-            result.append(currentLine)
-        }
-        return result
-    }
+    /// Cache đã dựng sẵn; trả về tham chiếu, không map lại 2000 dòng.
+    var rows: [ConsoleRow] { displayRows }
 
-    var rows: [ConsoleRow] {
-        let all = displayLines
-        let base = max(0, lineBatch.total - all.count)
-        return all.enumerated().map { ConsoleRow(id: base + $0.offset, text: $0.element) }
-    }
+    var rowCount: Int { displayRows.count }
+
+    /// id của dòng cuối đang hiển thị (dùng để cuộn, không cần map cả mảng).
+    var lastRowID: Int { displayRows.last?.id ?? 0 }
 
     func tail(_ count: Int) -> [ConsoleRow] {
-        guard count > 0 else { return [] }
-        let all = rows
-        return Array(all.suffix(count))
+        guard count > 0, !displayRows.isEmpty else { return [] }
+        return Array(displayRows.suffix(count))
     }
 }
 

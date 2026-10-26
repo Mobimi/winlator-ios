@@ -180,6 +180,22 @@ Giới hạn cần biết trước khi chạy agent dài:
 
 > **Cảnh báo API key:** `serial.log` ghi lại **mọi byte hiện trên console**, kể cả key nếu bạn gõ vào shell. Đừng gửi `serial.log`/`diagnostics.txt` cho người khác khi chưa xoá key. Cách sạch hơn: tạo file key bằng app **Files** trong thư mục chia sẻ (`/mnt/share`), rồi `install -m600 /mnt/share/agent.env ~/.agent.env && source ~/.agent.env`.
 
+## Khi `npm` báo lỗi hoặc hỏi `(y)`
+
+```bash
+cd ~/projects/test        # phải đứng trong thư mục có package.json
+npm test 2>&1 | head -20  # chỉ cần 20 dòng đầu, phần sau là stack trace
+```
+
+| Hiện tượng | Nguyên nhân thật | Làm gì |
+|---|---|---|
+| Ở `~` gõ `npm test` → nhiều dòng `npm error`, có `ENOENT`/`package.json` | `~` không phải dự án npm, npm không có gì để chạy | `cd` vào thư mục dự án rồi chạy lại |
+| `npm error Missing script: "test"` | `package.json` chưa khai báo script `test` | Thêm `"scripts": { "test": "..." }` hoặc chạy script thật (`npm run dev`, `node test.js`…) |
+| `Ok to proceed? (y)` khi `npx` | `npx` hỏi có tải gói về không | Gõ `y` rồi gửi — từ **0.2.4 (9)** app không chặn gửi khi lệnh đang chạy/hỏi |
+| Hàng trăm dòng `npm error` cho một lỗi | npm in cả stack + log | Đọc 2–3 dòng đầu: `npm error code …`, `npm error path …`, dòng cuối `npm error A complete log…` |
+
+`npm test` chỉ là alias của `npm run test`; nếu dự án không có script đó thì lỗi là đúng, không phải app hay image hỏng.
+
 ## Ngân sách tài nguyên (số thật)
 
 | Thứ | Hiện tại | Ghi chú |
