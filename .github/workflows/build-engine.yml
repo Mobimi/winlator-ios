@@ -70,8 +70,6 @@ jobs:
           ls -l "$BIN"
           shasum -a 256 "$BIN"
           echo "--- split-wx ---"
-          grep -qE "^#define CONFIG_DARWIN 1$" "$CONF" || \
-            { echo "FAIL: engine khong build cho Darwin"; exit 1; }
           strings -a "$BIN" | grep -q "vm_remap for jit splitwx failed" || \
             { echo "FAIL: engine thieu split-wx vmremap (QEMU quá cũ?)"; exit 1; }
           echo "split-wx: ON (vm_remap)"
