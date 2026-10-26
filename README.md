@@ -174,6 +174,7 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] App boot Debian thật trên iPhone 12 Pro Max (0.2.3, StikDebug bật JIT)
 [x] 0.2.4 (8): sửa nhận output lệnh (socket 4444 + mốc dòng tuyệt đối + chờ prompt) — đã xác nhận trên máy
 [x] 0.2.4 (9): gửi được khi lệnh đang hỏi y/n; gộp publish console (1 tín hiệu/chunk, cache dòng) — CI build OK, chờ xác nhận trên máy
+[x] 0.2.4 (10): gợi ý sửa khi `No such file`/CRLF/`Permission denied` (tìm file trong share/Projects, tự chép vào `/mnt/share/_import`), fix npm global EACCES, docs đường đi của file — chờ xác nhận trên máy
 [x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
 [x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Tab **Shell**: ô nhập lệnh, lịch sử bền, snippet, trạng thái gửi, gợi ý 4 lớp, cảnh báo lệnh nguy hiểm

@@ -44,7 +44,7 @@ struct ProjectsView: View {
                 } header: {
                     Text("Môi trường")
                 } footer: {
-                    Text("Mỗi dự án tạo một thư mục thật trong Documents/Projects và được lưu lại trên máy. Lệnh Linux chỉ chạy sau khi có engine (M1).")
+                    Text("Mỗi dự án có thư mục riêng trong máy ảo tại /home/dev/projects/<tên>. File trên iPhone chỉ vào được máy ảo qua Files → Devbox → share (/mnt/share).")
                 }
             }
             .navigationTitle("Devbox")

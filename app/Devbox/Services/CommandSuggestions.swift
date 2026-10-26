@@ -14,6 +14,10 @@ struct CommandSuggestion: Identifiable, Hashable {
     var detail: String
     var kind: Kind
     var fill: String
+    /// Với gợi ý "chép file từ thư mục phía app vào share": nguồn và đích trên
+    /// iPhone. `applyFix` chép trước rồi mới điền lệnh.
+    var copyFrom: URL? = nil
+    var copyTo: URL? = nil
 
     static func == (lhs: CommandSuggestion, rhs: CommandSuggestion) -> Bool {
         lhs.text == rhs.text && lhs.kind == rhs.kind

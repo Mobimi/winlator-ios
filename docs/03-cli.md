@@ -151,11 +151,19 @@ Cần phân biệt hai thứ:
 Ví dụ cài một agent CLI (chọn công cụ bạn dùng; `pip`/`npm` là đủ):
 
 ```bash
-npm install -g opencode-ai      # hoặc: pip install aider-chat
-tmux new -s agent               # rớt console vẫn không chết agent
-export DEEPSEEK_API_KEY=...     # xem cảnh báo bên dưới
-opencode                        # hoặc: aider --model deepseek/deepseek-chat
+# npm toàn cục trong image thuộc root → phải đổi prefix về nhà mình, nếu không
+# sẽ gặp hàng loạt "npm error code EACCES ... /usr/local/lib/node_modules"
+npm config set prefix ~/.local
+grep -q '.local/bin' ~/.bashrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+npm install -g @deepseek-ai/dsh   # hoặc: pip install aider-chat
+tmux new -s agent                 # rớt console vẫn không chết agent
+export DEEPSEEK_API_KEY=...       # xem cảnh báo bên dưới
+dsh web                           # hoặc: opencode / aider --model deepseek/deepseek-chat
 ```
+
+> Bấm **Cài gói bổ sung** trong tab Shell cũng tự đặt prefix này (và cài `tmux`, `ssh`, `rg`), nên nếu đã bấm thì bỏ qua 3 dòng đầu.
 
 Các CLI này là JavaScript/Python thuần (không cần GPU), nên chỉ cần Node 22/Python 3.13 + mạng + key. Riêng OpenCode/Claude Code sẽ bật thêm language server (`tsserver`, `pyright`) cho từng dự án — đó là phần tốn RAM nhất, nên mở dự án nhỏ trước.
 
@@ -163,7 +171,7 @@ Kiểm tra nhanh trước khi cài (cả hai phải OK):
 
 ```bash
 curl -sI https://api.deepseek.com | head -1   # phải thấy HTTP/2 200/401..., không phải lỗi certificate
-df -h / && free -m                            # còn ≥1 GB đĩa và ≥300 MB RAM trống
+df -h / && free -m                            # xem còn bao nhiêu đĩa/RAM (image chỉ còn ~440 MB đĩa cho user dev)
 ```
 
 Giới hạn cần biết trước khi chạy agent dài:
@@ -172,7 +180,7 @@ Giới hạn cần biết trước khi chạy agent dài:
 |---|---|
 | Mặc định **1 vCPU** (Chế độ chắc chắn) | Tắt công tắc để dùng 4 vCPU nếu máy chạy ổn; agent chạy test sẽ nhanh hơn nhiều |
 | RAM 1792 MB | Tránh monorepo/Next.js; đặt `NODE_OPTIONS=--max-old-space-size=1024`, không chạy song song |
-| Đĩa 5 GB | `df -h /`; dọn `~/.npm`, `~/.cache`, `node_modules` cũ; image có thể build lại với `IMG_SIZE` lớn hơn |
+| Đĩa 1.9 GB, chỉ ~440 MB trống cho `dev` | `df -h /`; image được `resize2fs -M` về mức nhỏ nhất nên đừng tin `IMG_SIZE=5G` trong script build. Chỉ nên cài **một** CLI: `npm i -g` xong thì `npm cache clean --force`, `rm -rf ~/.cache/pip`, `sudo apt-get clean`. Hết chỗ thì gỡ bớt gói: `sudo apt-get purge ...` |
 | Console chỉ giữ 2000 dòng | Cho agent ghi ra file: `... 2>&1 \| tee ~/agent.log`, xem bằng `tail -f ~/agent.log` hoặc trong `tmux` |
 | iOS có thể suspend khi ra nền | Bật **giữ chạy nền** trong Thiết lập; agent dài nên chạy trong `tmux` để nối lại vẫn còn phiên |
 | Không có Docker | Harness kiểu SWE-bench cần Docker thì không chạy; harness chỉ gọi API rồi chạy test trực tiếp thì được |

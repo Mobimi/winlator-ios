@@ -452,9 +452,10 @@ struct ShellView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11))
                 .foregroundStyle(.yellow)
-            Text("Thiếu lệnh · gợi ý cài")
+            Text(fix.detail)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.6))
+                .lineLimit(2)
             Spacer()
             Button {
                 model.applyFix()
@@ -466,6 +467,15 @@ struct ShellView: View {
                     .padding(.vertical, 4)
                     .background(Color.yellow.opacity(0.18), in: Capsule())
                     .foregroundStyle(.yellow)
+            }
+            .buttonStyle(.plain)
+            Button {
+                model.dismissFix()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .padding(4)
             }
             .buttonStyle(.plain)
         }
@@ -863,7 +873,7 @@ struct ShellView: View {
         if !guest.shellSeen {
             return "Console đã nối nhưng getty chưa in prompt.\nChờ thêm vài giây — lệnh sẽ chỉ gửi khi prompt dev@devbox xuất hiện."
         }
-        return "Gõ lệnh ở ô dưới rồi bấm mũi tên xanh.\nKết quả hiện ngay tại đây.\n\nVí dụ: python3 -V · node -v · ls -la"
+        return "Gõ lệnh ở ô dưới rồi bấm mũi tên xanh.\nFile trong Files → Devbox → share nằm ở /mnt/share.\n\nVí dụ: cd /mnt/share && ls · python3 -V · node -v"
     }
 
     private func suggestionColor(_ kind: CommandSuggestion.Kind) -> Color {

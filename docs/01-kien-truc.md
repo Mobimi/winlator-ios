@@ -109,7 +109,7 @@ Documents/Devbox/
 ├── share/                     # 9p, mount tại /mnt/share
 │   ├── .ports                 # portwatch.sh ghi cổng đang LISTEN
 │   └── ...                    # file trao đổi với guest
-└── Projects/                  # thư mục dự án phía app (không auto-mount)
+└── Projects/                  # thư mục phía app (KHÔNG auto-mount; muốn đưa file vào guest thì qua share/)
 ```
 
 Quyết định quan trọng:

@@ -181,6 +181,57 @@ python3 -m venv .venv && source .venv/bin/activate && pip install requests
 
 ---
 
+## Bước 7.5 — Đưa file từ iPhone vào Linux
+
+Chỉ **một** thư mục trên iPhone nối được vào máy ảo:
+
+```
+Files → Trên iPhone → Devbox → share      =      /mnt/share      (trong Linux)
+```
+
+File để ở chỗ khác — ngay gốc `Devbox/`, trong `Devbox/Projects/`, trong iCloud — Linux **không thấy**. Đây là lý do hay gặp nhất của `can't open file ... No such file or directory`.
+
+```bash
+cd /mnt/share
+ls -la                 # thấy devbox.py chưa? Linux phân biệt Devbox.py với devbox.py
+python3 devbox.py      # chạy ngay trong share
+```
+
+Muốn chạy trong thư mục dự án thì chép vào trước (Shell mở sẵn ở `~/projects`):
+
+```bash
+cp /mnt/share/devbox.py ~/projects/
+cd ~/projects && python3 devbox.py
+```
+
+Ba lỗi thường gặp khi file được tạo trên Windows/PC:
+
+| Lỗi | Nguyên nhân | Sửa |
+|---|---|---|
+| `can't open file '/home/dev/projects/devbox.py'` | file không nằm trong `~/projects` (đang ở `/mnt/share` hoặc `Documents/Projects`) | `cd /mnt/share` rồi chạy, hoặc `cp` vào |
+| `bash: ./devbox.py: /usr/bin/env: bad interpreter` | file có CRLF (`\r`) của Windows | `sed -i 's/\r$//' devbox.py` |
+| `bash: ./devbox.py: Permission denied` | thiếu quyền chạy | `chmod +x devbox.py` |
+
+Từ **0.2.4 (10)**, khi gặp lỗi app hiện thanh **gợi ý sửa** ngay trên bàn phím: tìm file cùng tên trong `share`/`Projects` (không phân biệt hoa thường), tự chép sang `/mnt/share/_import/...` nếu cần, rồi điền sẵn lệnh đúng — bấm một lần là chạy. Thanh này cũng nhận ra `npm ... EACCES`, `No space left on device`, lỗi DNS của `apt` và `bad interpreter`; bấm `×` để bỏ qua gợi ý sai.
+
+> `Documents/Projects/<tên>` mà app tạo là thư mục phía iPhone, **không** phải `~/projects/<tên>` trong máy ảo. Hai thư mục khác nhau; muốn đưa file vào máy ảo thì đi qua `Devbox/share`.
+
+### Máy ảo còn bao nhiêu chỗ?
+
+```bash
+df -h /
+```
+
+Image Debian được đóng gói ở kích thước nhỏ nhất (**1.9 GB**, còn ~440 MB cho user `dev`), nên cài hai agent CLI là hết chỗ. Dọn trước khi cài:
+
+```bash
+npm cache clean --force; rm -rf ~/.cache/pip; sudo apt-get clean; df -h /
+```
+
+Hết chỗ thật thì gỡ gói không dùng: `sudo apt-get purge <tên-gói>`.
+
+---
+
 ## Bước 8 — Web preview tự mở
 
 Trong Linux, chạy dev server nghe cổng **3000**, **5173** hoặc **8080**:
