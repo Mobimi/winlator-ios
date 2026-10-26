@@ -17,6 +17,10 @@ final class PortWatcher: ObservableObject {
         if let initial = readPorts() {
             known = initial
             ports = initial.sorted()
+        } else {
+            known = []
+            probed = []
+            ports = []
         }
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
             self?.tick()
@@ -40,7 +44,12 @@ final class PortWatcher: ObservableObject {
     }
 
     private func tick() {
-        guard let current = readPorts() else { return }
+        guard let current = readPorts() else {
+            known = []
+            probed = []
+            ports = []
+            return
+        }
         ports = current.sorted()
         probed.formIntersection(current)
         for port in current where !known.contains(port) && !probed.contains(port) {
@@ -54,9 +63,11 @@ final class PortWatcher: ObservableObject {
         guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
             return nil
         }
+        let allowed = Set(DevboxConfig.displayedPorts)
         var result: Set<Int> = []
         for line in text.split(separator: "\n") {
-            if let port = Int(line.trimmingCharacters(in: .whitespaces)), port > 0, port < 65536 {
+            if let port = Int(line.trimmingCharacters(in: .whitespaces)),
+               allowed.contains(port) {
                 result.insert(port)
             }
         }

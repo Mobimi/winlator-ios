@@ -128,6 +128,7 @@ final class QEMUEngine: ObservableObject {
 
         logLines = []
         prepareLog()
+        GuestConsole.shared.resetForNewBoot()
         Self.trace("=== start ===")
         errno = 0
 
@@ -179,6 +180,7 @@ final class QEMUEngine: ObservableObject {
         state = .starting
         startedAt = Date()
         Self.exitCalled = false
+        IdleTimer.hold("engine", true)
 
         Self.trace("app: \(Bundle.main.bundlePath)")
         Self.trace("engine: \(dylib.path)")
@@ -209,8 +211,21 @@ final class QEMUEngine: ObservableObject {
         guard state.isActive else { return }
         let port = qmpPort
         Self.trace("stop requested")
-        DispatchQueue.global(qos: .userInitiated).async {
-            QMPClient.quit(port: port, timeout: 4)
+        stage("đang dừng QEMU")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // QEMU có thể chưa mở cổng QMP khi state còn .starting. Thử lại
+            // đến khi main loop thoát (run() đặt .stopped) hoặc hết 15 s.
+            let deadline = Date().addingTimeInterval(15)
+            while Date() < deadline {
+                var active = true
+                DispatchQueue.main.sync {
+                    active = self?.state.isActive ?? false
+                }
+                if !active { return }
+                QMPClient.quit(port: port, timeout: 2)
+                Thread.sleep(forTimeInterval: 0.8)
+            }
+            QEMUEngine.trace("stop: QMP quit không làm QEMU thoát sau 15s")
         }
     }
 
@@ -318,7 +333,7 @@ final class QEMUEngine: ObservableObject {
         args += ["-append", "console=ttyAMA0 root=/dev/vda rw loglevel=4 net.ifnames=0"]
         args += ["-drive", "if=virtio,format=raw,cache=writeback,file=\(image.rootfs.path)"]
         args += ["-virtfs", "local,path=\(share.path),mount_tag=share,security_model=none,multidevs=remap"]
-        let forwarded = [3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000, 2222]
+        let forwarded = DevboxConfig.forwardedHostPorts
         let forwards = forwarded.map { "hostfwd=tcp:127.0.0.1:\($0)-:\($0 == 2222 ? 22 : $0)" }.joined(separator: ",")
         args += ["-netdev", "user,id=n0,\(forwards)"]
         args += ["-device", "virtio-net-pci,netdev=n0,romfile="]
@@ -426,7 +441,18 @@ final class QEMUEngine: ObservableObject {
                 return
             }
             self.state = .stopped
+            self.finishRun()
         }
+    }
+
+    /// Dọn trạng thái chỉ có ý nghĩa khi QEMU còn chạy: mốc `.ports` (để
+    /// PortWatcher không hiện cổng cũ), boot monitor và cờ giữ màn hình sáng.
+    private func finishRun() {
+        stopBootMonitor()
+        guestBooted = false
+        guestAliveAt = nil
+        try? FileManager.default.removeItem(at: DevboxConfig.shareDirectory.appendingPathComponent(".ports"))
+        IdleTimer.hold("engine", false)
     }
 
     private func fail(_ message: String) {
@@ -438,6 +464,7 @@ final class QEMUEngine: ObservableObject {
                 self.logLines = [message]
             }
             self.state = .failed(message)
+            self.finishRun()
             self.saveDiagnostics()
         }
     }
@@ -461,6 +488,9 @@ final class QEMUEngine: ObservableObject {
         }
         fm.createFile(atPath: url.path, contents: nil)
         try? fm.removeItem(at: DevboxConfig.serialLogURL)
+        // Xoá mốc .ports của lần boot trước; nếu không, guestBooted có thể
+        // bật ngay từ mtime cũ trước khi guest thật sự chạy portwatch.
+        try? fm.removeItem(at: DevboxConfig.shareDirectory.appendingPathComponent(".ports"))
         logURL = url
         QEMUEngine.openTrace(url: url)
     }
@@ -489,7 +519,8 @@ final class QEMUEngine: ObservableObject {
             guard let self, self.state == .running else { return }
             let marker = DevboxConfig.shareDirectory.appendingPathComponent(".ports")
             if let values = try? marker.resourceValues(forKeys: [.contentModificationDateKey]),
-               let modified = values.contentModificationDate {
+               let modified = values.contentModificationDate,
+               modified >= (self.startedAt ?? .distantPast) {
                 self.guestAliveAt = modified
                 if !self.guestBooted {
                     self.guestBooted = true
@@ -577,6 +608,7 @@ final class QEMUEngine: ObservableObject {
                 self.state = .failed("QEMU chưa vào main loop sau 90 giây (JIT: \(jit)). Bước cuối: \(self.lastStage). Copy log để xem.")
             }
             self.stopLogTimer()
+            self.finishRun()
             self.saveDiagnostics()
         }
         RunLoop.main.add(timer, forMode: .common)

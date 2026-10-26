@@ -274,11 +274,10 @@ final class ConsoleShell: ObservableObject {
     private func printEngine() {
         let engine = QEMUEngine.shared
         append("QEMU: \(engine.state.text) · \(QEMUEngine.engineMode)", .output)
-        let images = documents.appendingPathComponent("Devbox/images", isDirectory: true)
-        let image = images.appendingPathComponent("devbox-rootfs.ext4")
-        if let attributes = try? FileManager.default.attributesOfItem(atPath: image.path),
+        if let image = InstalledImage.load(),
+           let attributes = try? FileManager.default.attributesOfItem(atPath: image.rootfs.path),
            let size = (attributes[.size] as? NSNumber)?.int64Value {
-            append("Image: có (\(formatBytes(size)))", .success)
+            append("Image: \(image.manifest.suite) · rootfs \(formatBytes(size))", .success)
         } else {
             append("Image: chưa cài", .output)
         }

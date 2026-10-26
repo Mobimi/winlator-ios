@@ -1,10 +1,15 @@
 import Foundation
 import Network
 
+struct ConsoleLineBatch: Equatable {
+    var items: [String]
+    var total: Int
+}
+
 final class GuestConsole: ObservableObject {
     static let shared = GuestConsole()
 
-    @Published private(set) var lines: [String] = []
+    @Published private(set) var lineBatch = ConsoleLineBatch(items: [], total: 0)
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
     @Published private(set) var lastError: String?
@@ -12,6 +17,9 @@ final class GuestConsole: ObservableObject {
     @Published private(set) var lastActivity = Date.distantPast
     @Published private(set) var connectedAt: Date?
     @Published private(set) var autoRecoveries = 0
+    /// Prompt `dev@devbox:~$ ` đã hiện trong guest. Dùng để không gửi lệnh
+    /// `cd` khi getty/bash còn đang khởi động.
+    @Published private(set) var shellReady = false
 
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
@@ -30,7 +38,14 @@ final class GuestConsole: ObservableObject {
     private var lastSendAt = Date.distantPast
     private var bytesAtSend = 0
     private var lastAutoRecovery = Date.distantPast
+    /// Khi socket đã nối, output lấy trực tiếp từ socket. serial.log chỉ
+    /// dùng để lấy phần boot trước khi nối và khi socket đứt.
+    private var serialDisplay = true
+    private var utf8Carry: [UInt8] = []
     @Published private(set) var currentLine = ""
+
+    var lines: [String] { lineBatch.items }
+    var totalLines: Int { lineBatch.total }
 
     private let maxLines = 2000
     private let serialURL = DevboxConfig.serialLogURL
@@ -132,26 +147,30 @@ final class GuestConsole: ObservableObject {
         guard serialTimer == nil else { return }
         drainSerial()
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.drainSerial()
+            _ = self?.drainSerial()
         }
         RunLoop.main.add(timer, forMode: .common)
         serialTimer = timer
     }
 
-    private func drainSerial() {
+    @discardableResult
+    private func drainSerial() -> Bool {
         let url = serialURL
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
         defer { try? handle.close() }
-        guard let size = try? handle.seekToEnd() else { return }
+        guard let size = try? handle.seekToEnd() else { return false }
         if size < serialOffset {
             serialOffset = 0
         }
-        guard size > serialOffset else { return }
+        guard size > serialOffset else { return false }
         let wanted = min(size - serialOffset, 1 << 18)
-        guard (try? handle.seek(toOffset: serialOffset)) != nil else { return }
-        guard let data = try? handle.read(upToCount: Int(wanted)), !data.isEmpty else { return }
+        guard (try? handle.seek(toOffset: serialOffset)) != nil else { return false }
+        guard let data = try? handle.read(upToCount: Int(wanted)), !data.isEmpty else { return false }
         serialOffset += UInt64(data.count)
         serialBytes += data.count
+        // Khi socket đang nối, output đi thẳng qua socket. Vẫn đọc file để
+        // giữ offset ở cuối, nhưng không hiển thị lần hai.
+        guard serialDisplay else { return true }
         receivedBytes += data.count
         lastActivity = Date()
         if serialBytes == data.count {
@@ -159,20 +178,60 @@ final class GuestConsole: ObservableObject {
             QEMUEngine.trace("console: serial.log bắt đầu chảy · \"\(sample)\"")
         }
         consumeSanitized(data)
-        if !promptSeen, lines.contains(where: { $0.contains("login:") || $0.contains("dev@devbox") }) {
-            promptSeen = true
-            QEMUEngine.trace("console: thấy prompt guest trong serial.log sau \(Int(Date().timeIntervalSince(connectedAt ?? Date())))s")
+        return true
+    }
+
+    /// Đọc hết backlog trước khi chuyển sang socket. serial.log chứa cả phần
+    /// guest in ra lúc chưa có client, còn socket chỉ có dữ liệu từ lúc nối.
+    private func drainSerialBacklog() {
+        for _ in 0..<64 {
+            if !drainSerial() { break }
         }
     }
 
     private func consumeSanitized(_ data: Data) {
-        var bytes = [UInt8]()
-        bytes.reserveCapacity(data.count)
+        var bytes = utf8Carry
+        utf8Carry.removeAll(keepingCapacity: true)
+        bytes.reserveCapacity(bytes.count + data.count)
         for byte in data where byte != 0 {
             bytes.append(byte)
         }
         guard !bytes.isEmpty else { return }
-        consume(String(decoding: bytes, as: UTF8.self))
+
+        // Giữ lại phần đuôi UTF-8 chưa đủ byte. Nếu không, ký tự nhiều byte
+        // bị cắt giữa hai lần đọc 0.25 s sẽ thành ký tự thay thế.
+        var cut = bytes.count
+        var index = bytes.count - 1
+        var continuation = 0
+        while index >= 0, (bytes[index] & 0xC0) == 0x80 {
+            continuation += 1
+            index -= 1
+        }
+        if index < 0 {
+            cut = 0
+        } else {
+            let lead = bytes[index]
+            let expected: Int
+            if lead & 0x80 == 0 {
+                expected = 1
+            } else if lead & 0xE0 == 0xC0 {
+                expected = 2
+            } else if lead & 0xF0 == 0xE0 {
+                expected = 3
+            } else if lead & 0xF8 == 0xF0 {
+                expected = 4
+            } else {
+                expected = 1
+            }
+            if continuation + 1 < expected {
+                cut = index
+            }
+        }
+        if cut < bytes.count {
+            utf8Carry = Array(bytes[cut...])
+        }
+        guard cut > 0 else { return }
+        consume(String(decoding: bytes[0..<cut], as: UTF8.self))
     }
 
     private func hardClose() {
@@ -182,10 +241,13 @@ final class GuestConsole: ObservableObject {
         connection = nil
         parser = ANSIParser()
         pendingCR = false
+        utf8Carry = []
         connected = false
         connecting = false
         connectingSince = nil
         lastError = nil
+        shellReady = false
+        serialDisplay = true
     }
 
     func disconnect() {
@@ -193,29 +255,56 @@ final class GuestConsole: ObservableObject {
         stopRetryTimer()
         serialTimer?.invalidate()
         serialTimer = nil
+        serialDisplay = true
         hardClose()
     }
 
     func clear() {
         DispatchQueue.main.async {
-            self.lines = []
+            self.lineBatch = ConsoleLineBatch(items: [], total: 0)
             self.currentLine = ""
             self.pendingCR = false
             self.parser = ANSIParser()
+            self.utf8Carry = []
+            // Không đụng `shellReady`: xoá màn hình chỉ xoá phần đã hiển thị,
+            // bash vẫn đang đứng ở prompt và vẫn nhận lệnh được.
         }
     }
 
-    func send(_ text: String, expectReply: Bool = true) {
-        guard let data = text.data(using: .utf8) else { return }
+    /// Gọi khi QEMU bắt đầu boot mới: serial.log đã bị xoá nên phải bỏ
+    /// toàn bộ output của lần boot trước, tránh lẫn dòng và tránh mốc
+    /// `totalLines` cũ.
+    func resetForNewBoot() {
+        DispatchQueue.main.async {
+            self.lineBatch = ConsoleLineBatch(items: [], total: 0)
+            self.currentLine = ""
+            self.parser = ANSIParser()
+            self.pendingCR = false
+            self.utf8Carry = []
+            self.serialOffset = 0
+            self.serialBytes = 0
+            self.socketBytes = 0
+            self.receivedBytes = 0
+            self.lastActivity = .distantPast
+            self.connectedAt = nil
+            self.shellReady = false
+            self.serialDisplay = true
+        }
+    }
+
+    @discardableResult
+    func send(_ text: String, expectReply: Bool = true) -> Bool {
+        guard let data = text.data(using: .utf8) else { return false }
         guard connected else {
             QEMUEngine.trace("console: bỏ qua gửi \(text.count) ký tự vì chưa nối")
-            return
+            return false
         }
         if expectReply {
             lastSendAt = Date()
             bytesAtSend = receivedBytes
         }
         connection?.send(content: data, completion: .contentProcessed { _ in })
+        return true
     }
 
     func sendControl(_ code: UInt8) {
@@ -253,6 +342,16 @@ final class GuestConsole: ObservableObject {
             case .ready:
                 DispatchQueue.main.async {
                     guard self.generation == gen else { return }
+                    // Lấy nốt phần boot đã ghi vào serial.log trước khi
+                    // chuyển sang đọc trực tiếp socket.
+                    self.serialDisplay = true
+                    self.drainSerialBacklog()
+                    self.serialDisplay = false
+                    // `hardClose()` (dùng khi Nối lại) xoá `shellReady` nhưng
+                    // giữ `currentLine`. Nếu prompt vẫn còn ở cuối dòng, tính
+                    // lại ngay; nếu không app sẽ chờ prompt mãi dù bash đã sẵn
+                    // sàng.
+                    self.updateShellReady()
                     self.connected = true
                     self.connecting = false
                     self.connectingSince = nil
@@ -266,8 +365,8 @@ final class GuestConsole: ObservableObject {
                         let open = QMPClient.chardevOpen(port: qmp, timeout: 2)
                         QEMUEngine.trace("console: QEMU thấy client serial = \(Self.describe(open))")
                     }
+                    self.receive(on: candidate, generation: gen)
                 }
-                self.receive(on: candidate, generation: gen)
             case .waiting(let error):
                 DispatchQueue.main.async {
                     guard self.generation == gen else { return }
@@ -312,6 +411,8 @@ final class GuestConsole: ObservableObject {
                     }
                     self.socketBytes += data.count
                     self.lastActivity = Date()
+                    self.receivedBytes += data.count
+                    self.consumeSanitized(data)
                 }
             }
             if isComplete || error != nil {
@@ -320,6 +421,8 @@ final class GuestConsole: ObservableObject {
                     self.connected = false
                     self.connecting = false
                     self.connection = nil
+                    self.serialDisplay = true
+                    self.drainSerial()
                     QEMUEngine.trace("console: đóng kết nối \(isComplete ? "EOF" : (error?.localizedDescription ?? ""))")
                 }
                 return
@@ -327,8 +430,6 @@ final class GuestConsole: ObservableObject {
             self.receive(on: connection, generation: gen)
         }
     }
-
-    private var promptSeen = false
 
     private func consume(_ text: String) {
         for character in text {
@@ -371,14 +472,29 @@ final class GuestConsole: ObservableObject {
         if currentLine.count > 4000 {
             currentLine = String(currentLine.suffix(4000))
         }
+        updateShellReady()
+    }
+
+    private func updateShellReady() {
+        let prompt = currentLine.hasSuffix("$ ") || currentLine.hasSuffix("# ")
+        let ready = prompt && (currentLine.contains("dev@devbox") || currentLine.contains("root@devbox"))
+        if ready != shellReady {
+            shellReady = ready
+            if ready {
+                QEMUEngine.trace("console: prompt guest đã sẵn sàng")
+            }
+        }
     }
 
     private func endLine() {
-        lines.append(currentLine)
+        let text = currentLine
         currentLine = ""
-        if lines.count > maxLines {
-            lines.removeFirst(lines.count - maxLines)
+        var items = lineBatch.items
+        items.append(text)
+        if items.count > maxLines {
+            items.removeFirst(items.count - maxLines)
         }
+        lineBatch = ConsoleLineBatch(items: items, total: lineBatch.total + 1)
     }
 
     private func stopRetryTimer() {
@@ -387,15 +503,17 @@ final class GuestConsole: ObservableObject {
     }
 
     var displayLines: [String] {
-        var result = lines
-        if !currentLine.isEmpty || lines.isEmpty {
+        var result = lineBatch.items
+        if !currentLine.isEmpty || result.isEmpty {
             result.append(currentLine)
         }
         return result
     }
 
     var rows: [ConsoleRow] {
-        displayLines.enumerated().map { ConsoleRow(id: $0.offset, text: $0.element) }
+        let all = displayLines
+        let base = max(0, lineBatch.total - all.count)
+        return all.enumerated().map { ConsoleRow(id: base + $0.offset, text: $0.element) }
     }
 
     func tail(_ count: Int) -> [ConsoleRow] {
@@ -442,6 +560,10 @@ struct ANSIParser {
         case escape
         case csi
         case osc
+        case oscEscape
+        case string
+        case stringEscape
+        case charset
     }
 
     private var mode: Mode = .idle
@@ -459,11 +581,18 @@ struct ANSIParser {
         case .idle:
             return
         case .escape:
-            if character == "[" {
+            switch character {
+            case "[":
                 mode = .csi
-            } else if character == "]" {
+            case "]":
                 mode = .osc
-            } else {
+            case "(", ")", "*", "+", "-", ".", "/":
+                // ESC ( B, ESC ) 0 … chọn bảng mã; byte sau là tham số.
+                mode = .charset
+            case "P", "^", "_", "X":
+                // DCS / PM / APC / SOS: bỏ tới ST.
+                mode = .string
+            default:
                 mode = .idle
             }
         case .csi:
@@ -471,9 +600,21 @@ struct ANSIParser {
                 mode = .idle
             }
         case .osc:
-            if character == "\u{07}" || character == "\u{1B}" {
+            if character == "\u{07}" {
                 mode = .idle
+            } else if character == "\u{1B}" {
+                mode = .oscEscape
             }
+        case .oscEscape:
+            mode = character == "\\" ? .idle : .osc
+        case .string:
+            if character == "\u{1B}" {
+                mode = .stringEscape
+            }
+        case .stringEscape:
+            mode = character == "\\" ? .idle : .string
+        case .charset:
+            mode = .idle
         }
     }
 }

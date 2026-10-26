@@ -34,6 +34,11 @@ enum DevboxConfig {
     static var imagesRoot: URL { root.appendingPathComponent("images", isDirectory: true) }
     static var imageDirectory: URL { imagesRoot.appendingPathComponent(slug, isDirectory: true) }
     static var shareDirectory: URL { root.appendingPathComponent("share", isDirectory: true) }
+
+    /// Cổng guest → host do QEMU forward. `PortWatcher` chỉ hiện những cổng
+    /// này vì các cổng khác trong guest không mở được từ 127.0.0.1 trên iOS.
+    static let forwardedHostPorts = [3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000, 2222]
+    static let displayedPorts = forwardedHostPorts.filter { $0 != 2222 }
 }
 
 struct ImageManifest: Codable {

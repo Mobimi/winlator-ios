@@ -63,7 +63,10 @@ final class ShellModel: ObservableObject {
     private var monitor: Timer?
     private var historyIndex: Int?
     private var draft = ""
-    private var consumed = 0
+    /// Mốc tuyệt đối (không phải chỉ số mảng) của dòng cuối đã đọc.
+    /// `GuestConsole.lines` bị cắt còn 2000 dòng, nên dùng `count` làm mốc
+    /// sẽ kẹt ở 2000 và bỏ mọi output mới.
+    private var consumedTotal = 0
 
     var transcriptText: String {
         entries.map { entry in
@@ -92,10 +95,10 @@ final class ShellModel: ObservableObject {
 
     func attach(_ guest: GuestConsole) {
         guard consoleSink == nil else { return }
-        consumed = guest.lines.count
-        consoleSink = guest.$lines
+        consumedTotal = guest.totalLines
+        consoleSink = guest.$lineBatch
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] lines in self?.activity(lines: lines) }
+            .sink { [weak self] batch in self?.activity(batch) }
         promptSink = guest.$currentLine
             .receive(on: DispatchQueue.main)
             .sink { [weak self] line in self?.promptChanged(line) }
@@ -116,6 +119,7 @@ final class ShellModel: ObservableObject {
             guest.reconnect()
             return
         }
+        guard guest.shellReady else { return }
         let command = input.trimmingCharacters(in: .whitespacesAndNewlines)
         input = ""
         historyIndex = nil
@@ -137,7 +141,7 @@ final class ShellModel: ObservableObject {
     }
 
     func runSnippet(_ text: String, guest: GuestConsole) {
-        guard guest.connected else { return }
+        guard guest.connected, guest.shellReady else { return }
         input = ""
         deliver(text, guest: guest)
     }
@@ -191,13 +195,13 @@ final class ShellModel: ObservableObject {
     }
 
     func kill(port: Int, guest: GuestConsole) {
-        guard guest.connected else { return }
+        guard guest.connected, guest.shellReady else { return }
         begin(display: "Tắt cổng \(port)", note: "cổng \(port)", guest: guest,
               line: "fuser -k \(port)/tcp 2>/dev/null; devbox-killport \(port) 2>/dev/null; true")
     }
 
     func installExtras(guest: GuestConsole) {
-        guard guest.connected else { return }
+        guard guest.connected, guest.shellReady else { return }
         let directory = DevboxConfig.shareDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let script = directory.appendingPathComponent("devbox-extra.sh")
@@ -207,7 +211,7 @@ final class ShellModel: ObservableObject {
     }
 
     func runDiagnostics(guest: GuestConsole) {
-        guard guest.connected else { return }
+        guard guest.connected, guest.shellReady else { return }
         begin(display: "Kiểm tra console", note: "chẩn đoán", guest: guest,
               line: "echo DEVBOX-PING; whoami; pwd; python3 -V; node -v")
     }
@@ -253,11 +257,11 @@ final class ShellModel: ObservableObject {
         state = .idle
         fix = nil
         silent = false
-        consumed = 0
+        consumedTotal = 0
     }
 
     func applySize(cols: Int, rows: Int, guest: GuestConsole) {
-        guard guest.connected, state == .idle, input.isEmpty else { return }
+        guard guest.connected, guest.shellReady, input.isEmpty else { return }
         guest.applySize(cols: cols, rows: rows)
     }
 
@@ -272,7 +276,7 @@ final class ShellModel: ObservableObject {
             entries.removeFirst(entries.count - 60)
         }
         silent = false
-        consumed = guest.lines.count
+        consumedTotal = guest.totalLines
         guest.sendLine(command)
         updateCwd(with: command)
         refresh()
@@ -283,22 +287,29 @@ final class ShellModel: ObservableObject {
         state = .sent
         entries.append(ShellEntry(command: display, note: note))
         silent = false
-        consumed = guest.lines.count
+        consumedTotal = guest.totalLines
         guest.sendLine(line)
         refresh()
     }
 
-    private func activity(lines: [String]) {
-        if lines.count < consumed {
-            consumed = 0
+    private func activity(_ batch: ConsoleLineBatch) {
+        let total = batch.total
+        if total < consumedTotal {
+            consumedTotal = 0
         }
-        let start = min(consumed, lines.count)
-        let fresh = Array(lines[start...])
-        consumed = lines.count
-        if let name = CommandCatalog.missingCommand(in: lines) {
+        // `batch.items` chỉ giữ 2000 dòng cuối, nên quy đổi mốc tuyệt đối
+        // sang chỉ số trong mảng. Dòng mới nhất luôn ở cuối mảng.
+        let base = total - batch.items.count
+        let start = max(consumedTotal, base)
+        let fresh = start < total ? Array(batch.items[(start - base)...]) : []
+        consumedTotal = total
+        if let name = CommandCatalog.missingCommand(in: batch.items) {
             fix = store.fixSuggestion(for: name)
         }
         guard !fresh.isEmpty, let index = entries.indices.last else { return }
+        // Dòng đến sau khi prompt đã đóng lệnh (ví dụ `stty` do app tự gửi)
+        // không được gán vào kết quả của lệnh trước.
+        guard entries[index].status != .done else { return }
         for raw in fresh {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
@@ -321,6 +332,8 @@ final class ShellModel: ObservableObject {
     private func promptChanged(_ line: String) {
         guard !line.isEmpty, let index = entries.indices.last else { return }
         guard line.hasSuffix("$ ") || line.hasSuffix("# ") else { return }
+        // Chỉ coi là prompt thật, không phải output tình cờ kết thúc bằng "$ ".
+        guard line.contains("dev@devbox") || line.contains("root@devbox") else { return }
         guard entries[index].status != .done else { return }
         entries[index].status = .done
         entries[index].finishedAt = Date()

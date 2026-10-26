@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Foundation
 
 struct TerminalView: View {
@@ -16,6 +17,7 @@ struct TerminalView: View {
     @State private var input = ""
     @State private var preview: PreviewTarget?
     @State private var didEnter = false
+    @State private var didSize = false
     @FocusState private var inputFocused: Bool
 
     private let localCommands = ["help", "jit", "diag", "bg", "mem", "uname", "df", "ls", "engine"]
@@ -79,19 +81,33 @@ struct TerminalView: View {
                 }
             }
             .onChange(of: guest.connected) { _, connected in
-                if connected {
+                if !connected {
+                    didSize = false
+                    didEnter = false
+                    return
+                }
+                if guest.shellReady {
+                    if !didSize {
+                        applySize()
+                        didSize = true
+                    }
                     enterProject()
                 }
             }
             .onChange(of: engine.state) { _, state in
                 if case .running = state {
+                    didSize = false
+                    didEnter = false
                     guest.connect(port: engine.consolePort)
                 }
             }
-            .onChange(of: guest.receivedBytes) { _, bytes in
-                if bytes > 0 {
-                    enterProject()
+            .onChange(of: guest.shellReady) { _, ready in
+                guard ready else { return }
+                if !didSize {
+                    applySize()
+                    didSize = true
                 }
+                enterProject()
             }
             .onChange(of: ports.autoOpenPort) { _, port in
                 guard let port else { return }
@@ -291,13 +307,18 @@ struct TerminalView: View {
 
     private func boot() {
         ports.start()
+        if !guestMode { shell.boot() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             inputFocused = true
         }
         if engine.isRunning {
             guest.connect(port: engine.consolePort)
         }
-        if guest.connected {
+        // Chỉ gửi `stty` khi bash đã in prompt. Trước đó là getty/login,
+        // gửi sớm sẽ bị hiểu thành tên đăng nhập.
+        if guest.connected, guest.shellReady {
+            applySize()
+            didSize = true
             enterProject()
         }
         startEngineIfNeeded()
@@ -310,16 +331,24 @@ struct TerminalView: View {
     }
 
     private func enterProject() {
-        guard guestMode, guest.connected, guest.receivedBytes > 0, !didEnter else { return }
-        didEnter = true
+        guard guestMode, guest.connected, guest.shellReady, !didEnter else { return }
         let path = project.guestPath
-        guest.send("mkdir -p \(path) && cd \(path)\r")
+        if guest.send("mkdir -p \(path) && cd \(path)\r") {
+            didEnter = true
+        }
+    }
+
+    private func applySize() {
+        let screen = UIScreen.main.bounds.size
+        let cols = max(20, min(200, Int(screen.width / 7.2)))
+        let rows = max(12, min(80, Int((screen.height - 260) / 15)))
+        guest.applySize(cols: cols, rows: rows)
     }
 
     private func submit() {
         if guestMode {
-            guard !input.isEmpty else { return }
-            guest.send(input + "\r")
+            guard !input.isEmpty, guest.shellReady else { return }
+            guard guest.send(input + "\r") else { return }
             input = ""
             return
         }
@@ -331,7 +360,7 @@ struct TerminalView: View {
 
     private func runQuick(_ command: String) {
         if guestMode {
-            guard guestLive else { return }
+            guard guestLive, guest.shellReady else { return }
             guest.send(command + "\r")
         } else {
             shell.run(command)

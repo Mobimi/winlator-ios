@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import UIKit
+import Combine
 
 final class ImageStore: ObservableObject {
     static let shared = ImageStore()
@@ -46,6 +46,10 @@ final class ImageStore: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var image: InstalledImage?
 
+    private var removalSink: AnyCancellable?
+    private var removalTimer: Timer?
+    private var removalPending = false
+
     private init() {
         image = InstalledImage.load()
         if image != nil {
@@ -56,16 +60,12 @@ final class ImageStore: ObservableObject {
     var isInstalled: Bool { image != nil }
 
     func install() {
-        guard !phase.isBusy else { return }
+        guard !phase.isBusy, !removalPending else { return }
         phase = .loadingManifest
-        DispatchQueue.main.async {
-            UIApplication.shared.isIdleTimerDisabled = true
-        }
+        IdleTimer.hold("install", true)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             defer {
-                DispatchQueue.main.async {
-                    UIApplication.shared.isIdleTimerDisabled = false
-                }
+                IdleTimer.hold("install", false)
             }
             do {
                 try self?.runInstall()
@@ -76,7 +76,42 @@ final class ImageStore: ObservableObject {
     }
 
     func remove() {
-        guard !phase.isBusy else { return }
+        guard !phase.isBusy, !removalPending else { return }
+        // QEMU đang giữ rootfs. Xoá ngay sẽ làm máy ảo đọc file đã biến mất;
+        // dừng QEMU trước rồi mới xoá.
+        if QEMUEngine.shared.state.isActive {
+            removalPending = true
+            phase = .failed("Đang dừng máy ảo — image sẽ được xoá sau khi QEMU thoát.")
+            watchEngineForRemoval()
+            QEMUEngine.shared.stop()
+            return
+        }
+        deleteImage()
+    }
+
+    private func watchEngineForRemoval() {
+        removalSink = QEMUEngine.shared.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self, self.removalPending, !state.isActive else { return }
+                self.deleteImage()
+            }
+        let timer = Timer(timeInterval: 20, repeats: false) { [weak self] _ in
+            guard let self, self.removalPending else { return }
+            self.removalPending = false
+            self.removalSink = nil
+            self.removalTimer = nil
+            self.phase = .failed("QEMU chưa thoát sau 20 giây nên chưa xoá image. Thử lại sau.")
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        removalTimer = timer
+    }
+
+    private func deleteImage() {
+        removalPending = false
+        removalSink = nil
+        removalTimer?.invalidate()
+        removalTimer = nil
         try? FileManager.default.removeItem(at: DevboxConfig.imageDirectory)
         image = nil
         phase = .idle

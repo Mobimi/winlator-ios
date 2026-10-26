@@ -67,7 +67,10 @@ enum QMPClient {
     }
 
     private static func run(_ commands: [String], port: UInt16, timeout: TimeInterval) -> [String] {
-        lock.lock()
+        // Boot monitor gọi nhiều lệnh QMP liên tiếp; đừng để một lần đọc chậm
+        // giữ lock lâu hơn thời gian người dùng chờ (Stop / Nối lại).
+        let wait = Date().addingTimeInterval(min(max(timeout, 0.2), 1.5))
+        guard lock.lock(before: wait) else { return [] }
         defer { lock.unlock() }
         guard let session = Session(port: port, timeout: timeout) else { return [] }
         defer { session.close() }

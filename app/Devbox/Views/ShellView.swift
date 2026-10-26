@@ -15,6 +15,7 @@ struct ShellView: View {
     @State private var copied = false
     @State private var showRaw = false
     @State private var showFull = false
+    @State private var didSize = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -47,6 +48,10 @@ struct ShellView: View {
                     Menu {
                         Button("Lịch sử lệnh") { sheet = .history }
                         Button("Xoá màn hình") { model.clear(guest: guest) }
+                        Button("Kiểm tra console (whoami/python3)") {
+                            model.runDiagnostics(guest: guest)
+                        }
+                        .disabled(!guest.connected || !guest.shellReady)
                         Button("Sao chép 20 dòng cuối") { copyTail() }
                         Divider()
                         Button("Cài gói bổ sung (tmux/ssh/rg)") {
@@ -69,7 +74,9 @@ struct ShellView: View {
             .onPreferenceChange(ShellSizeKey.self) { size in
                 guard size.width > 0, size != lastSize else { return }
                 lastSize = size
-                applySize(size)
+                // Đang chạy lệnh thì chưa gửi được `stty`; đánh dấu để lần
+                // prompt kế tiếp gửi lại kích thước mới.
+                didSize = applySize(size)
             }
             .sheet(item: $sheet) { item in
                 switch item {
@@ -102,15 +109,23 @@ struct ShellView: View {
             .onAppear(perform: boot)
             .onDisappear { ports.stop() }
             .onChange(of: guest.connected) { _, connected in
-                if connected {
-                    applySize(lastSize)
+                if !connected {
+                    didSize = false
+                    return
                 }
+                if guest.shellReady, !didSize {
+                    didSize = applySize(lastSize)
+                }
+            }
+            .onChange(of: guest.shellReady) { _, ready in
+                guard ready, !didSize else { return }
+                didSize = applySize(lastSize)
             }
             .onChange(of: engine.state) { _, state in
                 if case .running = state {
+                    didSize = false
                     ports.start()
                     guest.connect(port: engine.consolePort)
-                    applySize(lastSize)
                 }
             }
             .onChange(of: ports.autoOpenPort) { _, port in
@@ -226,25 +241,23 @@ struct ShellView: View {
                     stripButton("Khởi động") { startEngine() }
                 }
             }
-        } else if guest.receivedBytes == 0 {
-            if !engine.guestBooted {
-                strip(.yellow, "hourglass", "Máy ảo đang boot · \(engine.uptimeText)", "Lần đầu có thể 2–5 phút. Lệnh chỉ chạy sau khi getty lên.") {
-                    stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
-                    stripButton("Nối lại") { reconnectConsole() }
-                }
-            } else if !guest.connected {
-                strip(.orange, "bolt.slash.fill", "Guest đã boot nhưng chưa nối console", guest.lastError ?? (guest.connecting ? "Đang thử kết nối…" : "Bấm Nối lại")) {
-                    stripButton("Nối lại") { reconnectConsole() }
-                }
-            } else {
-                strip(.orange, "waveform.slash", "Guest chưa in ra serial", "\(heartbeatText) — xem logs/serial.log trong Files hoặc gửi file đó cho tác giả") {
-                    stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
-                    stripButton("Nối lại") { reconnectConsole() }
-                }
+        } else if !guest.connected {
+            strip(.orange, "bolt.slash.fill", "Guest đã boot nhưng chưa nối console", guest.lastError ?? (guest.connecting ? "Đang thử kết nối…" : "Bấm Nối lại")) {
+                stripButton("Nối lại") { reconnectConsole() }
             }
+        } else if model.state == .sent || model.state == .running {
+            // Lệnh đang chạy: prompt biến mất khỏi `currentLine` nên
+            // `guest.shellReady` = false. Không được báo "chờ prompt" ở đây.
+            EmptyView()
         } else if model.silent {
-            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · xem logs/serial.log") {
-                stripButton("Kiểm tra") { model.runDiagnostics(guest: guest) }
+            // Lệnh treo/không trả lời: prompt chưa về nên gửi lệnh mới sẽ bị
+            // chèn vào stdin của lệnh đang chạy. Ctrl-C là cách ngắt an toàn.
+            strip(.red, "exclamationmark.octagon.fill", "Debian không trả lời", "Đã nhận \(guest.receivedBytes) byte. \(heartbeatText) · Ctrl-C để ngắt lệnh treo") {
+                stripButton("Ctrl-C") { guest.sendKey(.controlC) }
+                stripButton("Nối lại") { reconnectConsole() }
+            }
+        } else if !guest.shellReady {
+            strip(.yellow, "hourglass", "Console đã nối · chờ prompt", "getty/bash còn đang khởi động. Lệnh chỉ gửi sau khi thấy prompt dev@devbox.") {
                 stripButton("Nối lại") { reconnectConsole() }
             }
         }
@@ -577,10 +590,10 @@ struct ShellView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 22))
-                    .foregroundStyle(guest.connected ? Color.green : Color.white.opacity(0.25))
+                    .foregroundStyle(guest.connected && guest.shellReady ? Color.green : Color.white.opacity(0.25))
             }
             .buttonStyle(.plain)
-            .disabled(!guest.connected)
+            .disabled(!guest.connected || !guest.shellReady)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -821,14 +834,14 @@ struct ShellView: View {
         case .stopped:
             return "LINUX ĐÃ DỪNG · mở lại app để boot lại"
         case .running:
-            if guest.receivedBytes == 0 {
-                if engine.guestBooted {
-                    return "GUEST ĐÃ BOOT · console chưa có dữ liệu"
-                }
-                return "ĐANG BOOT · \(engine.uptimeText)"
-            }
             if !guest.connected {
-                return "LINUX CHẠY · chưa nối console 4444"
+                return engine.guestBooted ? "GUEST ĐÃ BOOT · chưa nối console 4444" : "ĐANG BOOT · \(engine.uptimeText)"
+            }
+            if model.state == .sent || model.state == .running {
+                return "dev@devbox · đang chạy lệnh"
+            }
+            if !guest.shellReady {
+                return "CONSOLE ĐÃ NỐI · chờ prompt guest"
             }
             return "dev@devbox · \(model.cwd)"
         case .idle:
@@ -842,6 +855,9 @@ struct ShellView: View {
         }
         if !guest.connected {
             return "Chưa nối console.\nBấm Khởi động ở trên, hoặc mở một dự án để QEMU boot."
+        }
+        if !guest.shellReady {
+            return "Console đã nối nhưng getty chưa in prompt.\nChờ thêm vài giây — lệnh sẽ chỉ gửi khi prompt dev@devbox xuất hiện."
         }
         return "Gõ lệnh ở ô dưới rồi bấm mũi tên xanh.\nKết quả hiện ngay tại đây.\n\nVí dụ: python3 -V · node -v · ls -la"
     }
@@ -875,11 +891,13 @@ struct ShellView: View {
         UIPasteboard.general.string = text
     }
 
-    private func applySize(_ size: CGSize) {
-        guard size.width > 0, guest.connected else { return }
+    @discardableResult
+    private func applySize(_ size: CGSize) -> Bool {
+        guard size.width > 0, guest.connected, guest.shellReady, model.input.isEmpty else { return false }
         let cols = max(20, min(200, Int(size.width / 7.2)))
         let rows = max(12, min(80, Int(size.height / 15)))
         model.applySize(cols: cols, rows: rows, guest: guest)
+        return true
     }
 
     private func boot() {
@@ -887,7 +905,9 @@ struct ShellView: View {
         if engine.isRunning {
             ports.start()
             guest.connect(port: engine.consolePort)
-            applySize(lastSize)
+        }
+        if guest.connected, guest.shellReady, lastSize.width > 0 {
+            didSize = applySize(lastSize)
         }
         startEngine()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

@@ -109,7 +109,6 @@ struct SetupView: View {
 
                     if images.isInstalled {
                         Button(role: .destructive) {
-                            engine.stop()
                             images.remove()
                         } label: {
                             Label("Xoá image", systemImage: "trash")

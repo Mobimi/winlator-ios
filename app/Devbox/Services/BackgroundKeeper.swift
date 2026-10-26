@@ -96,6 +96,7 @@ final class BackgroundKeeper: ObservableObject {
     }
 
     func stop() {
+        guard wantsAudio || isAudioRunning || taskID != .invalid else { return }
         wantsAudio = false
         player.stop()
         engine.stop()

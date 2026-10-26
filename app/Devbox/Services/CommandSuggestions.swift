@@ -282,13 +282,32 @@ enum CommandCatalog {
 
     static func isDangerous(_ command: String) -> Bool {
         let lowered = command.lowercased()
-        let hardBlocks = ["mkfs", "dd if=", "> /dev/sd", ":(){", "chmod -r 777 /", "chown -r"]
-        for block in hardBlocks where lowered.contains(block) {
+        if lowered.contains("mkfs") || lowered.contains(":(){") {
             return true
         }
-        guard lowered.contains("rm -rf") || lowered.contains("rm -fr") else { return false }
-        let targets = [" /", " /*", " ~", " $home", " ..", " .", " /home", " /etc", " /usr"]
-        return targets.contains { lowered.contains("rm -rf" + $0) || lowered.contains("rm -fr" + $0) }
+        if lowered.contains("of=/dev/") {
+            return true
+        }
+        let recursive = lowered.contains("rm -rf")
+            || lowered.contains("rm -fr")
+            || lowered.contains("rm -r -f")
+            || lowered.contains("chmod -r 777")
+            || lowered.contains("chown -r")
+        guard recursive else { return false }
+        // Chỉ chặn khi đích là thư mục gốc/hệ thống. `rm -rf ./build`,
+        // `rm -rf node_modules` hay `rm -rf ~/projects/demo` là chuyện bình thường.
+        let tokens = lowered
+            .split(whereSeparator: { " \t\n;&|()".contains($0) })
+            .map(String.init)
+        let roots: Set<String> = [
+            "/", "/*", "~", "~/*", "$home", "$home/*",
+            "/bin", "/bin/*", "/boot", "/boot/*", "/dev", "/dev/*",
+            "/etc", "/etc/*", "/home", "/home/*", "/lib", "/lib/*",
+            "/opt", "/opt/*", "/root", "/root/*", "/sbin", "/sbin/*",
+            "/srv", "/srv/*", "/usr", "/usr/*", "/var", "/var/*",
+            "/system", "/system/*", "/private", "/private/*"
+        ]
+        return tokens.contains { roots.contains($0) }
     }
 
     static func missingCommand(in lines: [String]) -> String? {
@@ -484,10 +503,11 @@ final class SuggestionStore: ObservableObject {
         let prefix = raw.trimmingCharacters(in: .whitespaces)
         if prefix.hasPrefix("/mnt/share") {
             let relative = String(prefix.dropFirst("/mnt/share".count))
-            let trimmed = relative.hasPrefix("/") ? String(relative.dropFirst()) : relative
-            let base = DevboxConfig.shareDirectory
-            let directory = trimmed.isEmpty ? base : base.appendingPathComponent(trimmed)
-            return entries(in: directory, guestPrefix: "/mnt/share" + (trimmed.isEmpty ? "" : "/" + trimmed), input: prefix)
+            let after = relative.hasPrefix("/") ? String(relative.dropFirst()) : relative
+            let (dirPart, needle) = splitPath(after)
+            let base = dirPart.isEmpty ? DevboxConfig.shareDirectory : DevboxConfig.shareDirectory.appendingPathComponent(dirPart)
+            let guestPrefix = "/mnt/share" + (dirPart.isEmpty ? "" : "/" + dirPart)
+            return entries(in: base, guestPrefix: guestPrefix, needle: needle)
         }
         if prefix == "~" || prefix.hasPrefix("~/") {
             if prefix == "~" {
@@ -503,9 +523,11 @@ final class SuggestionStore: ObservableObject {
             let relative = String(prefix.dropFirst(2))
             if relative == "projects" || relative.hasPrefix("projects/") {
                 let rest = relative == "projects" ? "" : String(relative.dropFirst("projects/".count))
-                let directory = DevboxConfig.documents.appendingPathComponent("Projects", isDirectory: true)
-                let base = rest.isEmpty ? directory : directory.appendingPathComponent(rest)
-                return entries(in: base, guestPrefix: "~/projects" + (rest.isEmpty ? "" : "/" + rest), input: prefix)
+                let (dirPart, needle) = splitPath(rest)
+                let root = DevboxConfig.documents.appendingPathComponent("Projects", isDirectory: true)
+                let base = dirPart.isEmpty ? root : root.appendingPathComponent(dirPart)
+                let guestPrefix = "~/projects" + (dirPart.isEmpty ? "" : "/" + dirPart)
+                return entries(in: base, guestPrefix: guestPrefix, needle: needle)
             }
             return dirs.filter { $0.hasPrefix(prefix) && $0 != prefix }.prefix(6).map {
                 CommandSuggestion(text: $0, detail: "đã dùng", kind: .path, fill: $0)
@@ -516,9 +538,16 @@ final class SuggestionStore: ObservableObject {
         }
     }
 
-    private func entries(in directory: URL, guestPrefix: String, input: String) -> [CommandSuggestion] {
+    /// Tách "a/b/c" thành thư mục "a/b" và phần đang gõ "c".
+    private func splitPath(_ text: String) -> (dir: String, needle: String) {
+        guard let slash = text.lastIndex(of: "/") else { return ("", text) }
+        let dir = String(text[..<slash])
+        let needle = String(text[text.index(after: slash)...])
+        return (dir, needle)
+    }
+
+    private func entries(in directory: URL, guestPrefix: String, needle: String) -> [CommandSuggestion] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        let needle = input.split(separator: "/").last.map(String.init) ?? ""
         var result: [CommandSuggestion] = []
         for name in names.sorted() where name.hasPrefix(needle) && name != needle {
             let full = directory.appendingPathComponent(name)
