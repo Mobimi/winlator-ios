@@ -2,6 +2,22 @@ import Foundation
 import Darwin
 import CryptoKit
 
+@_silgen_name("mach_vm_remap")
+private func devbox_mach_vm_remap(
+    _ targetTask: vm_map_t,
+    _ targetAddress: UnsafeMutablePointer<mach_vm_address_t>?,
+    _ size: mach_vm_size_t,
+    _ mask: mach_vm_offset_t,
+    _ flags: Int32,
+    _ srcTask: vm_map_t,
+    _ srcAddress: mach_vm_address_t,
+    _ copy: boolean_t,
+    _ curProtection: UnsafeMutablePointer<vm_prot_t>?,
+    _ maxProtection: UnsafeMutablePointer<vm_prot_t>?,
+    _ inheritance: vm_inherit_t
+) -> kern_return_t
+
+
 final class QEMUEngine: ObservableObject {
     static let shared = QEMUEngine()
 
@@ -132,10 +148,10 @@ final class QEMUEngine: ObservableObject {
         // UTM's path for sideloaded apps: RW anonymous mapping + RX alias via
         // mach_vm_remap + mprotect(RX). No MAP_JIT, no dynamic-codesigning.
         let split = Self.splitWXProbe()
-        let mapJIT = split.ok ? nil : Self.mapJITProbe()
+        let mapJIT = split.execOK ? nil : Self.mapJITProbe()
         let tbSize: Int
         let splitWX: Bool
-        if split.ok {
+        if split.execOK {
             tbSize = split.tbSize
             splitWX = true
             execNote = split.note
@@ -681,7 +697,7 @@ final class QEMUEngine: ObservableObject {
             var rxAddress: mach_vm_address_t = 0
             var current: vm_prot_t = 0
             var maximum: vm_prot_t = 0
-            let remap = mach_vm_remap(
+            let remap = devbox_mach_vm_remap(
                 mach_task_self_,
                 &rxAddress,
                 mach_vm_size_t(bytes),
