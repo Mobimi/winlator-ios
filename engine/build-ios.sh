@@ -30,6 +30,14 @@ log() { echo "==> $*" >&2; }
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+ENGINE_MODE="${DEVBOX_ENGINE:-tcg}"
+case "$ENGINE_MODE" in
+    tcg) QEMU_EXTRA="" ;;
+    interp) QEMU_EXTRA="-Dtcg_threaded_interpreter=true" ;;
+    *) die "unknown DEVBOX_ENGINE: $ENGINE_MODE" ;;
+esac
+log "engine mode: $ENGINE_MODE $QEMU_EXTRA"
+
 mkdir -p "$BUILD" "$SYSROOT" "$SRC" "$OUT"
 
 [ "$(uname -s)" = "Darwin" ] || die "must run on macOS with Xcode"
@@ -210,6 +218,10 @@ QEMU_DIR="$(unpack "$QEMU_FILE")"
 if [ ! -f "$QEMU_DIR/.devbox-patched" ]; then
     log "patch qemu ios jit"
     patch -d "$QEMU_DIR" -p1 < "$ROOT/engine/patches/qemu-ios-jit.patch"
+    if [ "$ENGINE_MODE" = "interp" ]; then
+        log "mark engine as interpreter"
+        printf '\n__attribute__((used)) const char devbox_engine_marker[] = "devbox-engine-interp";\n' >> "$QEMU_DIR/tcg/tci.c"
+    fi
     touch "$QEMU_DIR/.devbox-patched"
 fi
 
@@ -258,7 +270,8 @@ meson_build "$ZSTD_DIR/build/meson" \
             --disable-xen \
             --disable-kvm \
             --disable-tpm \
-            --disable-auth-pam
+            --disable-auth-pam \
+            $QEMU_EXTRA
     fi
     log "build qemu"
     ninja -C build -j "$NCPU"

@@ -11,6 +11,9 @@ on:
 permissions:
   contents: write
 
+env:
+  DEVBOX_ENGINE: interp
+
 jobs:
   engine:
     runs-on: macos-14
@@ -38,6 +41,19 @@ jobs:
         env:
           SDKMINVER: "17.0"
         run: bash engine/build-ios.sh
+
+      - name: Verify engine
+        run: |
+          echo "--- interpreter config ---"
+          grep -E "CONFIG_TCG_(THREADED_)?INTERPRETER" engine/build/src/qemu-*/build/config-host.h || true
+          echo "--- binary ---"
+          BIN="engine/out/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
+          ls -l "$BIN"
+          shasum -a 256 "$BIN"
+          echo "--- marker ---"
+          if [ "$DEVBOX_ENGINE" = "interp" ]; then
+            strings -a "$BIN" | grep -c "devbox-engine-interp"
+          fi
 
       - name: Config log
         if: failure()
@@ -70,6 +86,12 @@ jobs:
           cd engine/out
           zip -qry "$RUNNER_TEMP/devbox-engine.zip" Frameworks
           gh release view engine-v1 >/dev/null 2>&1 || \
-            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks."
+            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks. devbox-engine.zip = threaded interpreter (no JIT needed), devbox-engine-tcg.zip = TCG (needs MAP_JIT)."
+          if ! gh release view engine-v1 --json assets -q '.assets[].name' | grep -qx "devbox-engine-tcg.zip"; then
+            if gh release download engine-v1 -p devbox-engine.zip -O "$RUNNER_TEMP/devbox-engine-tcg.zip"; then
+              gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine-tcg.zip" --clobber
+            fi
+          fi
           gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine.zip" --clobber
           ls -lh "$RUNNER_TEMP/devbox-engine.zip"
+          shasum -a 256 "$RUNNER_TEMP/devbox-engine.zip"
