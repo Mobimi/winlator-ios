@@ -6,7 +6,7 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 
 | Giai đoạn | CLI |
 |---|---|
-| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot được trên iPhone 12 Pro Max (0.2.3); bản 0.2.4 sửa hiển thị output lệnh trong tab Shell. |
+| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot và xác nhận output lệnh trên iPhone 12 Pro Max (0.2.4 (8)). |
 | **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
 | **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn trong tab Shell. Bật SSH (menu ⋯ → Cài gói bổ sung) rồi dùng Blink/Termius nếu cần TUI đầy đủ. |
 
@@ -117,6 +117,7 @@ jupyter lab --no-browser --ip=0.0.0.0 --port 8888
 - `curl` gọi API, `sqlite3` (qua Python, hoặc `apt install sqlite3`)
 - `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (đã cài sẵn `tmux`, `openssh-server`, `ripgrep`, `jq`, `tree`, `vim-tiny`; còn lại `apt install` được)
 - SSH vào chính máy ảo từ Blink/Termius: `ssh dev@127.0.0.1 -p 2222` (mật khẩu `dev`) → terminal grid đầy đủ, `vim`/`htop` chạy đúng
+- Agent CLI gọi API (OpenCode, Aider, Claude Code… chạy trong `tmux`) — xem mục **Chạy agent/CLI AI** bên dưới
 
 ### Chạy được nhưng chậm
 
@@ -139,6 +140,38 @@ Nguyên nhân: iOS **không cho virtualization phần cứng**, nên QEMU phải
 - Xcode, build iOS/macOS
 - CUDA/GPU, train ML
 - Build LLVM/Chromium từ source
+
+## Chạy agent/CLI AI (DeepSeek, OpenAI, Claude…)
+
+Cần phân biệt hai thứ:
+
+- **Agent CLI / harness gọi API trên cloud** (DeepSeek API, OpenAI-compatible): **chạy được**. Nó chỉ là một chương trình Python/Node gọi HTTPS, dùng `git`/`rg`/`python`/`node` trong máy ảo — đúng những thứ image đã có.
+- **Chạy model DeepSeek ngay trong máy ảo**: **không**. Không có GPU/NPU cho guest, RAM guest 1792 MB, và TCG dịch từng instruction. Model 7B q4 đã cần ~4–5 GB RAM; model thật của DeepSeek còn lớn hơn rất nhiều.
+
+Ví dụ cài một agent CLI (chọn công cụ bạn dùng; `pip`/`npm` là đủ):
+
+```bash
+npm install -g opencode-ai      # hoặc: pip install aider-chat
+tmux new -s agent               # rớt console vẫn không chết agent
+export DEEPSEEK_API_KEY=...     # xem cảnh báo bên dưới
+opencode                        # hoặc: aider --model deepseek/deepseek-chat
+```
+
+Các CLI này là JavaScript/Python thuần (không cần GPU), nên chỉ cần Node 22/Python 3.13 + mạng + key. Riêng OpenCode/Claude Code sẽ bật thêm language server (`tsserver`, `pyright`) cho từng dự án — đó là phần tốn RAM nhất, nên mở dự án nhỏ trước.
+
+Giới hạn cần biết trước khi chạy agent dài:
+
+| Giới hạn | Cách xử lý |
+|---|---|
+| Mặc định **1 vCPU** (Chế độ chắc chắn) | Tắt công tắc để dùng 4 vCPU nếu máy chạy ổn; agent chạy test sẽ nhanh hơn nhiều |
+| RAM 1792 MB | Tránh monorepo/Next.js; đặt `NODE_OPTIONS=--max-old-space-size=1024`, không chạy song song |
+| Đĩa 5 GB | `df -h /`; dọn `~/.npm`, `~/.cache`, `node_modules` cũ; image có thể build lại với `IMG_SIZE` lớn hơn |
+| Console chỉ giữ 2000 dòng | Cho agent ghi ra file: `... 2>&1 \| tee ~/agent.log`, xem bằng `tail -f ~/agent.log` hoặc trong `tmux` |
+| iOS có thể suspend khi ra nền | Bật **giữ chạy nền** trong Thiết lập; agent dài nên chạy trong `tmux` để nối lại vẫn còn phiên |
+| Không có Docker | Harness kiểu SWE-bench cần Docker thì không chạy; harness chỉ gọi API rồi chạy test trực tiếp thì được |
+| Chỉ có binary x86_64 | Không chạy (không có Rosetta/box64); chọn bản arm64 hoặc cài qua `pip`/`npm` |
+
+> **Cảnh báo API key:** `serial.log` ghi lại **mọi byte hiện trên console**, kể cả key nếu bạn gõ vào shell. Đừng gửi `serial.log`/`diagnostics.txt` cho người khác khi chưa xoá key. Cách sạch hơn: tạo file key bằng app **Files** trong thư mục chia sẻ (`/mnt/share`), rồi `install -m600 /mnt/share/agent.env ~/.agent.env && source ~/.agent.env`.
 
 ## Ngân sách tài nguyên (số thật)
 

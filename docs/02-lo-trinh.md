@@ -30,7 +30,7 @@
 | Tắt máy an toàn | QMP `quit` qua `127.0.0.1:4445` |
 | Rootfs | Debian 13 ARM64, ext4 1.9 GB, zstd 423 MB, kernel 6.12.113 |
 
-**Đã test trên máy:** boot Debian thành công (0.2.3, iPhone 12 Pro Max / iOS 18.4.1, StikDebug bật JIT). Đang xác nhận độ trễ console và output lệnh trên bản 0.2.4.
+**Đã test trên máy:** boot Debian thành công (0.2.3, iPhone 12 Pro Max / iOS 18.4.1, StikDebug bật JIT). **0.2.4 (8)** đã xác nhận trên máy: lệnh trả output đầy đủ, tab Shell và Console thô hiển thị đúng.
 
 ---
 

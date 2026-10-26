@@ -7,13 +7,13 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 
 > **Trạng thái thật (2026-10-26):** app đã cài và chạy trên iPhone 12 Pro Max / iOS 18.4.1 với StikDebug (`CS_DEBUGGED` bật). Bản 0.2.0 vào main loop nhưng guest không thực thi lệnh nào; 0.2.1 văng vì app tự chạy thử mã máy trên vùng RWX không có quyền thực thi; **0.2.3 đưa TCG về `split-wx` đúng như UTM**: `mmap` RW + `mach_vm_remap` alias RX + `mprotect(RX)`, **không dùng `MAP_JIT`**, không cần entitlement `dynamic-codesigning`. App kiểm tra chính đường split-wx trước khi boot và ghi kết quả vào `qemu.log` (`split-wx: …`).
 >
-> **Đã boot thật trên máy:** 0.2.3 boot được Debian trên iPhone (StikDebug bật JIT), nhưng bảng kết quả tab Shell báo `(lệnh không in ra gì)` dù lệnh đã chạy. **0.2.4 (8)** sửa đường nhận output: console lấy trực tiếp socket 4444 khi đã nối (`serial.log` chỉ dùng cho phần boot trước khi nối, khi socket đứt, hoặc khi socket im lặng >5 giây), `ShellModel` dùng mốc dòng tuyệt đối thay vì `lines.count` nên không bị kẹt khi mảng bị cắt còn 2000 dòng, và chỉ gửi lệnh sau khi thấy prompt `dev@devbox` (`shellReady`).
+> **Đã boot thật trên máy:** 0.2.3 boot được Debian trên iPhone (StikDebug bật JIT), nhưng bảng kết quả tab Shell báo `(lệnh không in ra gì)` dù lệnh đã chạy. **0.2.4 (8) đã sửa và xác nhận trên máy:** lệnh trả output đầy đủ, tab Shell và Console thô hiển thị đúng. Cách sửa: console lấy trực tiếp socket 4444 khi đã nối (`serial.log` chỉ dùng cho phần boot trước khi nối, khi socket đứt, hoặc khi socket im lặng >5 giây), `ShellModel` dùng mốc dòng tuyệt đối thay vì `lines.count` nên không bị kẹt khi mảng bị cắt còn 2000 dòng, và chỉ gửi lệnh sau khi thấy prompt `dev@devbox` (`shellReady`).
 >
 > **Đã build xanh:** workflow **Build iOS IPA** run `40281763997` → `Devbox-unsigned.ipa` 7.31 MB (SHA256 `0cfc8050…`, **0.2.4 (8)**, engine `f9421c3e…` có split-wx). Workflow **Build QEMU engine** run `40280678103` → `engine-v1`: `devbox-engine.zip` + `devbox-engine-tcg.zip`, 6.65 MB (SHA256 `f9421c3e…`), TCG + split-wx, không có interpreter. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
 >
 > **Mới ở bản 0.2.3:** engine TCG chạy bằng `-accel tcg,split-wx=on` (RW + RX alias), không cần `MAP_JIT`; app thử split-wx 256 → 16 MB rồi mới quyết định boot. `P_TRACED` chỉ CÓ khi debugger còn attach — StikDebug detach sau khi bật JIT nên `P_TRACED = KHÔNG` **là bình thường**, `CS_DEBUGGED` mới là cờ JIT thật. `MAP_JIT` errno 22 cũng bình thường với app sideload và không còn chặn boot. Console đọc socket 4444 khi đã nối; `Devbox/logs/serial.log` vẫn là log đầy đủ của guest để chẩn đoán. Chẩn đoán sâu qua QMP lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Công tắc **Chế độ chắc chắn (1 CPU)** bật mặc định.
 >
-> **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Phần app đã được test boot trên iPhone; còn phải xác nhận lại output lệnh bằng bản 0.2.4.
+> **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Phần app đã test trên iPhone 12 Pro Max: **0.2.4 (8)** boot được và trả output lệnh đầy đủ.
 
 ---
 
@@ -172,15 +172,15 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] App tải image từ release `img-v1`, kiểm SHA256, giải nén zstd tại chỗ
 [x] Image boot thật trong CI: prompt sau 62 giây, python/node/npm/git/gcc OK, mạng ra PyPI OK
 [x] App boot Debian thật trên iPhone 12 Pro Max (0.2.3, StikDebug bật JIT)
-[x] 0.2.4 (8): sửa nhận output lệnh (socket 4444 + mốc dòng tuyệt đối + chờ prompt) — chờ build/device xác nhận
+[x] 0.2.4 (8): sửa nhận output lệnh (socket 4444 + mốc dòng tuyệt đối + chờ prompt) — đã xác nhận trên máy
 [x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
 [x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Tab **Shell**: ô nhập lệnh, lịch sử bền, snippet, trạng thái gửi, gợi ý 4 lớp, cảnh báo lệnh nguy hiểm
 [x] Quản lý cổng trong app: mở web, copy URL, tắt cổng; forward 15 cổng kể cả SSH 2222
 [x] Image có `tmux`, `openssh-server`, `ripgrep`, `jq`, `tree`, `vim-tiny`; app cài bổ sung được vào image cũ
 [x] Chạy nền: `UIBackgroundModes=audio` + audio im lặng (công tắc trong Thiết lập, lệnh `bg`)
-[ ] Cài app lên iPhone 12 Pro Max và test boot          ← đã boot được với 0.2.3
-[ ] M2 — xác nhận output python/node/npm + preview trên máy thật (0.2.4)
+[x] Cài app lên iPhone 12 Pro Max và test boot          ← 0.2.3 boot được, 0.2.4 (8) output đầy đủ
+[x] M2 — xác nhận output python/node/npm + preview trên máy thật (0.2.4 (8))
 [ ] M3 — UX: template, quản lý gói, import/export (2–3 tuần)
 [ ] M4 — tối ưu pin/nhiệt, code-server (tuỳ chọn)
 ```
