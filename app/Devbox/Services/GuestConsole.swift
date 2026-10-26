@@ -431,11 +431,6 @@ final class GuestConsole: ObservableObject {
                     self.serialDisplay = true
                     self.drainSerialBacklog()
                     self.serialDisplay = false
-                    // `hardClose()` (dùng khi Nối lại) xoá `shellReady` nhưng
-                    // giữ `currentLine`. Nếu prompt vẫn còn ở cuối dòng, tính
-                    // lại ngay; nếu không app sẽ chờ prompt mãi dù bash đã sẵn
-                    // sàng.
-                    self.recomputeReadiness()
                     self.socketHeard = false
                     self.serialFallback = false
                     self.connected = true
@@ -445,6 +440,12 @@ final class GuestConsole: ObservableObject {
                     self.connectedAt = Date()
                     self.openTries = 0
                     self.openFailures = 0
+                    // `hardClose()` (dùng khi Nối lại) xoá `shellReady` nhưng
+                    // giữ `currentLine`. Nếu prompt vẫn còn ở cuối dòng, tính
+                    // lại ngay; nếu không app sẽ chờ prompt mãi dù bash đã sẵn
+                    // sàng. Đặt sau `connected = true` để bootstrap gửi được
+                    // ngay khi socket vừa nối.
+                    self.recomputeReadiness()
                     QEMUEngine.trace("console: đã nối 127.0.0.1:\(port)")
                     let qmp = DevboxConfig.qmpPort
                     DispatchQueue.global(qos: .utility).async {
@@ -619,20 +620,25 @@ final class GuestConsole: ObservableObject {
         }
         // Một lần mỗi lần boot: thêm `~/.local/bin` (chỗ `npm i -g`/`pip
         // --user` cài vào) và bật `PROMPT_COMMAND` in mã thoát của lệnh.
-        if ready && !didBootstrap {
-            didBootstrap = true
-            suppressBootstrapEcho = true
-            bootstrapEchoMark = exitCount
-            // Bootstrap chạy xong sẽ in prompt kèm dấu `__DEVBOX_EXIT`; nếu vì
-            // lý do gì không có (lệnh lỗi cú pháp) thì mở lại sau 4 giây để
-            // console không bị "câm" oan.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-                self?.suppressBootstrapEcho = false
-            }
-            sendLine(Self.bootstrapLine, expectReply: false)
-        }
+        bootstrapIfNeeded(ready && connected)
         if suppressBootstrapEcho && exitCount > bootstrapEchoMark {
             suppressBootstrapEcho = false
+        }
+    }
+
+    /// Chỉ gửi khi đã nối socket: prompt có thể đã thấy trong `serial.log`
+    /// trước lúc nối, gửi sớm sẽ mất lệnh mà vẫn đánh dấu "đã bootstrap".
+    private func bootstrapIfNeeded(_ nowReady: Bool) {
+        guard nowReady, !didBootstrap else { return }
+        guard send(Self.bootstrapLine + "\r", expectReply: false) else { return }
+        didBootstrap = true
+        suppressBootstrapEcho = true
+        bootstrapEchoMark = exitCount
+        // Bootstrap chạy xong sẽ in prompt kèm dấu `__DEVBOX_EXIT`; nếu vì
+        // lý do gì không có (lệnh lỗi cú pháp) thì mở lại sau 4 giây để
+        // console không bị "câm" oan.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            self?.suppressBootstrapEcho = false
         }
     }
 
@@ -655,6 +661,7 @@ final class GuestConsole: ObservableObject {
         if ready != shellReady {
             shellReady = ready
         }
+        bootstrapIfNeeded(ready && connected)
     }
 
     private func appendLine(_ text: String) {
