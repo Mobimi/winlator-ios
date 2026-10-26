@@ -44,16 +44,21 @@ jobs:
 
       - name: Verify engine
         run: |
-          echo "--- interpreter config ---"
-          grep -E "CONFIG_TCG_(THREADED_)?INTERPRETER" engine/build/src/qemu-*/build/config-host.h || true
+          CONF="$(ls engine/build/src/qemu-*/build/config-host.h | head -1)"
+          echo "--- config: $CONF ---"
+          grep -E "TCG_(THREADED_)?INTERPRETER" "$CONF" || echo "(khong co dong nao)"
+          if [ "$DEVBOX_ENGINE" = "interp" ]; then
+            grep -q "define CONFIG_TCG_THREADED_INTERPRETER 1" "$CONF" || \
+              grep -q "define CONFIG_TCG_INTERPRETER 1" "$CONF" || \
+              { echo "FAIL: build khong bat interpreter"; exit 1; }
+            echo "interpreter: ON"
+          fi
           echo "--- binary ---"
           BIN="engine/out/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
           ls -l "$BIN"
           shasum -a 256 "$BIN"
-          echo "--- marker ---"
-          if [ "$DEVBOX_ENGINE" = "interp" ]; then
-            strings -a "$BIN" | grep -c "devbox-engine-interp"
-          fi
+          echo "--- marker (khong bat buoc) ---"
+          strings -a "$BIN" | grep -c "devbox-engine-interp" || echo "marker bi strip, bo qua"
 
       - name: Config log
         if: failure()
