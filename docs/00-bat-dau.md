@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7.37 MB, phiên bản **0.3.0 (11)** (bản build ngày 26/10/2026, SHA256 bắt đầu `d3fcd4e3`). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi. Muốn chắc mình cài đúng bản: mở tab **Thiết lập**, dòng đầu của chẩn đoán phải ghi `== Devbox 0.3.0 (11) ==`.
+File khoảng 7.45 MB, phiên bản **0.4.0 (12)** (bản build ngày 26/10/2026, SHA256 bắt đầu `3daa6e84`). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi. Muốn chắc mình cài đúng bản: mở tab **Thiết lập**, dòng đầu của chẩn đoán phải ghi `== Devbox 0.4.0 (12) ==`.
 
 **Cách khác (qua Artifacts):**
 

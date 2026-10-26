@@ -6,7 +6,7 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 
 | Giai đoạn | CLI |
 |---|---|
-| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot và xác nhận output lệnh trên iPhone 12 Pro Max (0.2.4 (8)); bản mới nhất **0.3.0 (11)** thêm bôi đen/chép nhiều dòng, mã thoát, lọc lỗi, import file và tự vá PATH/npm prefix. |
+| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot và xác nhận output lệnh trên iPhone 12 Pro Max (0.2.4 (8)); bản mới nhất **0.4.0 (12)** thêm **bác sĩ lỗi** (gợi ý lệnh sửa cho npm/pip/apt/python/node/git) và proxy web cho server chỉ nghe `127.0.0.1`, cùng toàn bộ 0.3.0: bôi đen/chép nhiều dòng, mã thoát, lọc lỗi, import file, tự vá PATH/npm prefix. |
 | **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
 | **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn trong tab Shell. Bật SSH (menu ⋯ → Cài gói bổ sung) rồi dùng Blink/Termius nếu cần TUI đầy đủ. |
 
@@ -114,7 +114,7 @@ jupyter lab --no-browser --ip=0.0.0.0 --port 8888
 - `git clone` / `commit` / `push` (cần mạng)
 - `python3`, `venv`, `pip install` các gói **có wheel arm64** (requests, flask, fastapi, pydantic, pillow…)
 - `node`, `npm install` dự án vừa, `npx`, chạy script Node
-- `uvicorn` / `flask run` / `npm run dev` → web preview tự mở trong app (cổng 3000/5173/8080)
+- `uvicorn` / `flask run` / `npm run dev` → web preview tự mở trong app (28 cổng đã forward; server chỉ nghe `127.0.0.1` thì mở bằng **Chuyển qua proxy** trong danh sách cổng)
 - `gcc` biên dịch C nhỏ, `make` dự án vừa
 - `curl` gọi API, `sqlite3` (qua Python, hoặc `apt install sqlite3`)
 - `ssh`, `rsync`, `tmux`, `vim`, `jq`, `htop`… (đã cài sẵn `tmux`, `openssh-server`, `ripgrep`, `jq`, `tree`, `vim-tiny`; còn lại `apt install` được)

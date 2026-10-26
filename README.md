@@ -9,7 +9,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 >
 > **Đã boot thật trên máy:** 0.2.3 boot được Debian trên iPhone (StikDebug bật JIT), nhưng bảng kết quả tab Shell báo `(lệnh không in ra gì)` dù lệnh đã chạy. **0.2.4 (8) đã sửa và xác nhận trên máy:** lệnh trả output đầy đủ, tab Shell và Console thô hiển thị đúng. Cách sửa: console lấy trực tiếp socket 4444 khi đã nối (`serial.log` chỉ dùng cho phần boot trước khi nối, khi socket đứt, hoặc khi socket im lặng >5 giây), `ShellModel` dùng mốc dòng tuyệt đối thay vì `lines.count` nên không bị kẹt khi mảng bị cắt còn 2000 dòng, và chỉ gửi lệnh sau khi thấy prompt `dev@devbox` (`shellReady`).
 >
-> **Đã build xanh:** workflow **Build iOS IPA** run `40338103435` → `Devbox-unsigned.ipa` 7.37 MB (SHA256 `d3fcd4e3…`, **0.3.0 (11)**, engine `f9421c3e…` có split-wx). Workflow **Build QEMU engine** run `40280678103` → `engine-v1`: `devbox-engine.zip` + `devbox-engine-tcg.zip`, 6.65 MB (SHA256 `f9421c3e…`), TCG + split-wx, không có interpreter. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
+> **Đã build xanh:** workflow **Build iOS IPA** run `40341456835` → `Devbox-unsigned.ipa` 7.45 MB (SHA256 `3daa6e84…`, **0.4.0 (12)**, engine `f9421c3e…` có split-wx). Workflow **Build QEMU engine** run `40280678103` → `engine-v1`: `devbox-engine.zip` + `devbox-engine-tcg.zip`, 6.65 MB (SHA256 `f9421c3e…`), TCG + split-wx, không có interpreter. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
 >
 > **Mới ở bản 0.2.3:** engine TCG chạy bằng `-accel tcg,split-wx=on` (RW + RX alias), không cần `MAP_JIT`; app thử split-wx 256 → 16 MB rồi mới quyết định boot. `P_TRACED` chỉ CÓ khi debugger còn attach — StikDebug detach sau khi bật JIT nên `P_TRACED = KHÔNG` **là bình thường**, `CS_DEBUGGED` mới là cờ JIT thật. `MAP_JIT` errno 22 cũng bình thường với app sideload và không còn chặn boot. Console đọc socket 4444 khi đã nối; `Devbox/logs/serial.log` vẫn là log đầy đủ của guest để chẩn đoán. Chẩn đoán sâu qua QMP lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Công tắc **Chế độ chắc chắn (1 CPU)** bật mặc định.
 >
@@ -65,7 +65,7 @@ Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xe
 │        ├─ serial PL011 (ttyAMA0) ──────┘                     │
 │        ├─ virtio-blk: Debian 13 ARM64 (ext4 raw)            │
 │        ├─ virtio-9p: /mnt/share ↔ app Documents/Devbox/share│
-│        └─ virtio-net (user-mode) + hostfwd 15 cổng (web, ssh)│
+│        └─ virtio-net (user-mode) + hostfwd 28 cổng web + ssh  │
 └──────────────────────────────────────────────────────────────┘
                               │
 ┌──────────────────── Debian 13 ARM64 guest ──────────────────┐
@@ -182,10 +182,11 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] 0.2.4 (9): gửi được khi lệnh đang hỏi y/n; gộp publish console (1 tín hiệu/chunk, cache dòng) — CI build OK, chờ xác nhận trên máy
 [x] 0.2.4 (10): gợi ý sửa khi `No such file`/CRLF/`Permission denied` (tìm file trong share/Projects, tự chép vào `/mnt/share/_import`), fix npm global EACCES, docs đường đi của file — CI build OK (IPA 7.33 MB), chờ xác nhận trên máy
 [x] 0.3.0 (11): bôi đen nhiều dòng ở Kết quả + Console thô, ✓/✗ mã thoát thật, đếm lỗi + **Chỉ lỗi**, **Đưa file vào máy ảo**, **Kiểm tra nhanh**, PATH `~/.local` tự động mỗi lần boot, thêm mã lỗi npm (ERESOLVE/EINTEGRITY/E404/ETARGET) — CI build OK (IPA 7.37 MB), chờ xác nhận trên máy
+[x] 0.4.0 (12): server chỉ nghe `127.0.0.1` mở được bằng proxy TCP trong guest (không phải sửa code); **bác sĩ lỗi** gợi ý lệnh sửa cho npm/pip/apt/python/node/git; forward 28 cổng — CI build OK (IPA 7.45 MB), chờ xác nhận trên máy
 [x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
 [x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Tab **Shell**: ô nhập lệnh, lịch sử bền, snippet, trạng thái gửi, gợi ý 4 lớp, cảnh báo lệnh nguy hiểm
-[x] Quản lý cổng trong app: mở web, copy URL, tắt cổng; forward 15 cổng kể cả SSH 2222
+[x] Quản lý cổng trong app: mở web, copy URL, tắt cổng; forward 28 cổng web + SSH 2222, cổng lạ mở qua proxy
 [x] Image có `tmux`, `openssh-server`, `ripgrep`, `jq`, `tree`, `vim-tiny`; app cài bổ sung được vào image cũ
 [x] Chạy nền: `UIBackgroundModes=audio` + audio im lặng (công tắc trong Thiết lập, lệnh `bg`)
 [x] Cài app lên iPhone 12 Pro Max và test boot          ← 0.2.3 boot được, 0.2.4 (8) output đầy đủ
