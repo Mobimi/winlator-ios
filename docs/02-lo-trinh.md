@@ -2,7 +2,7 @@
 
 Ước lượng cho **1 người full-time** (có hỗ trợ của AI), đã có iPhone + Windows + GitHub Actions. Không cần Mac.
 
-**Trạng thái thật (26/10/2026):** M0 ✅ · M1 ✅ (đã build + đóng gói, chờ test trên máy) · M2 🟡 (image + port watch + preview đã có, chưa test thực tế) · M3 ⬜ · M4 ⬜.
+**Trạng thái thật (26/10/2026):** M0 ✅ · M1 ✅ (đã boot Debian trên iPhone 12 Pro Max) · M2 🟡 (image + port watch + preview đã có; đang xác nhận output lệnh trên máy) · M3 ⬜ · M4 ⬜.
 
 ---
 
@@ -15,7 +15,7 @@
 | Bật JIT bằng StikDebug | Tab Thiết lập báo **`CS_DEBUGGED` = BẬT**; trước StikDebug phải báo TẮT |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-Đã xong: IPA **0.2.3 (6)**, 7.29 MB (SHA256 `4920d84a…`, run `40276432099`), ở release `ipa-v1` (workflow **Build iOS IPA** cập nhật tự động), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, console đọc từ file `logs/serial.log` (QEMU ghi mọi byte guest in ra, kể cả khi chưa có client nối 4444), và chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. **Engine TCG dùng split-wx** (RW + `mach_vm_remap` alias RX + `mprotect RX`, `-accel …,split-wx=on`; engine run `40275417146`, SHA256 `85e918a6…`): chạy được với app sideload không có entitlement `dynamic-codesigning`, không cần `MAP_JIT` — log `MAP_JIT … errno 22` là bình thường. App chỉ chặn boot khi `CS_DEBUGGED` chưa bật; `P_TRACED` thường là KHÔNG vì StikDebug detach sau khi bật JIT. Có công tắc **Chế độ chắc chắn (1 CPU)**, mặc định bật, để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
+Đã xong: IPA **0.2.3 (6)**, 7.29 MB (SHA256 `4920d84a…`, run `40276432099`), ở release `ipa-v1` (workflow **Build iOS IPA** cập nhật tự động), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**. **0.2.4 (7)** chuyển console sang đọc trực tiếp socket 4444 khi đã nối, dùng `serial.log` cho backlog boot/khi socket đứt, và dùng mốc dòng tuyệt đối trong `ShellModel` để output không bị mất khi mảng bị cắt còn 2000 dòng. Chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. **Engine TCG dùng split-wx** (RW + `mach_vm_remap` alias RX + `mprotect RX`, `-accel …,split-wx=on`; engine run `40275417146`, SHA256 `85e918a6…`): chạy được với app sideload không có entitlement `dynamic-codesigning`, không cần `MAP_JIT` — log `MAP_JIT … errno 22` là bình thường. App chỉ chặn boot khi `CS_DEBUGGED` chưa bật; `P_TRACED` thường là KHÔNG vì StikDebug detach sau khi bật JIT. Có công tắc **Chế độ chắc chắn (1 CPU)**, mặc định bật, để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
 
 ---
 
@@ -30,7 +30,7 @@
 | Tắt máy an toàn | QMP `quit` qua `127.0.0.1:4445` |
 | Rootfs | Debian 13 ARM64, ext4 1.9 GB, zstd 423 MB, kernel 6.12.113 |
 
-**Chờ test trên máy:** boot lần đầu, độ trễ console, hành vi khi vào nền.
+**Đã test trên máy:** boot Debian thành công (0.2.3, iPhone 12 Pro Max / iOS 18.4.1, StikDebug bật JIT). Đang xác nhận độ trễ console và output lệnh trên bản 0.2.4.
 
 ---
 
@@ -42,7 +42,7 @@
 | Chia sẻ file qua 9p | File trong `Documents/Devbox/share` thấy ở `/mnt/share` | ✅ |
 | Guest agent phát hiện cổng | `/mnt/share/.ports` cập nhật trong ≤ 2 s | ✅ `portwatch.service` |
 | Port forward | `curl 127.0.0.1:5173` từ app trả HTML | ✅ cố định 3000/5173/8080 |
-| Web preview | `npm run dev` → **tự mở WKWebView** | ✅ code xong, chờ test máy |
+| Web preview | `npm run dev -- --host 0.0.0.0` → **tự mở WKWebView** | ✅ code xong, chờ xác nhận trên máy |
 | Lưu dữ liệu qua reboot | Tắt/mở app, file vẫn còn | ✅ vì rootfs.ext4 ghi trực tiếp |
 | Import/export dự án | Nút Xuất → file trong Files.app | ⬜ chưa làm |
 | Reset máy ảo | Xoá image, giữ dữ liệu | ⬜ xoá image = reset toàn bộ |

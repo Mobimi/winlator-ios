@@ -169,7 +169,7 @@ npm init -y && npm install express
 python3 -m venv .venv && source .venv/bin/activate && pip install requests
 ```
 
-> Nếu gõ lệnh mà sau ~6 giây vẫn không thấy kết quả, băng đỏ **Debian không trả lời** hiện ra: bấm **Kiểm tra** (chạy `whoami`, `python3 -V`…) hoặc **Nối lại** (nối lại console 4444). Tab **Console thô** hiện số byte đã nhận — nếu là `0 B` thì app chưa nối được vào máy ảo, không phải lỗi lệnh.
+> Nếu gõ lệnh mà sau ~10 giây vẫn không thấy kết quả, băng đỏ **Debian không trả lời** hiện ra: bấm **Ctrl-C** để ngắt lệnh treo hoặc **Nối lại** (nối lại console 4444). App không tự đóng/mở lại cổng serial. Lệnh chỉ được gửi sau khi console thấy prompt `dev@devbox`; nếu băng vàng ghi **chờ prompt** thì getty còn đang khởi động, chờ thêm vài giây. Tab **Console thô** hiện số byte đã nhận — nếu là `0 B` thì app chưa nối được vào máy ảo, không phải lỗi lệnh.
 
 > Image mới có sẵn `python` = `python3`. Image cũ chỉ có `python3`; muốn dùng `python` thì chạy `sudo apt install -y python-is-python3` (hoặc bấm chip gợi ý khi gặp `command not found: python`).
 
@@ -199,7 +199,7 @@ cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173
 
 Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại. Tab **Shell → icon mạng** cũng có danh sách đó, kèm nút **Copy URL** và **Tắt cổng**.
 
-App forward sẵn 15 cổng: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222 (SSH). Cổng khác phải đổi về một trong các cổng này.
+App forward sẵn 15 cổng: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222 (SSH). Cổng khác phải đổi về một trong các cổng này. App chỉ hiện các cổng nằm trong danh sách forward, nên cổng lạ trong `.ports` không làm rối danh sách.
 
 ### Muốn terminal "xịn" hơn (vim, htop, chia đôi màn hình)
 
@@ -252,7 +252,7 @@ Không cần chụp ảnh — mọi thứ nằm trong file:
 | Dải đỏ `Không tạo được vùng code TCG…` | `split-wx` thất bại và `MAP_JIT` cũng bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi dòng `split-wx` / `MAP_JIT` |
 | Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox. Kiểm tra `CS_DEBUGGED = BẬT` |
 | `serial.log` trống hoàn toàn, `diag` báo `guest: … pc=0x40000000` không đổi | CPU khách không chạy được instruction đầu tiên (JIT/vCPU) | Bật **Chế độ chắc chắn (1 CPU)** ở tab Thiết lập, thoát hẳn app, mở lại, boot lại, rồi gửi `qemu.log` + `serial.log` |
-| `serial.log` có chữ nhưng app không hiện | App đọc file chậm / iOS chặn Files | Bấm **Nối lại** ở dải trạng thái; gửi `serial.log` |
+| `serial.log` có chữ nhưng tab **Console thô** không hiện | Kết nối socket 4444 đứt trong khi QEMU vẫn ghi log | Bấm **Nối lại** ở dải trạng thái (app chuyển tạm sang đọc `serial.log`); nếu vẫn trống, gửi `serial.log` |
 | Log QEMU có `failed to find romfile "efi-virtio.rom"` | IPA cũ: engine build không kèm blobs nhưng card mạng vẫn đòi ROM PXE | Cài IPA mới (từ `a724b2a7…` trở đi). Bản mới truyền `romfile=` rỗng nên bỏ ROM, không cần PXE |
 | Log QEMU có `Library not loaded: @rpath/...` | Framework chưa được ký lại khi cài | Cài bằng **Sideloadly** (ký được framework con). SideStore đôi khi hỏng bước này — thử lại |
 | Tải image báo `HTTP 404` | Asset release `img-v1` bị xoá/đổi tên | Báo mình; đừng tải file lạ từ nguồn khác |

@@ -6,7 +6,7 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 
 | Giai đoạn | CLI |
 |---|---|
-| **Hiện tại (25/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Chưa test trên máy thật tại thời điểm viết. |
+| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot được trên iPhone 12 Pro Max (0.2.3); bản 0.2.4 sửa hiển thị output lệnh trong tab Shell. |
 | **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
 | **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn trong tab Shell. Bật SSH (menu ⋯ → Cài gói bổ sung) rồi dùng Blink/Termius nếu cần TUI đầy đủ. |
 
@@ -16,7 +16,7 @@ Tab **Shell** là cửa nhập lệnh chính, dùng chung phiên console với t
 
 - **Gợi ý 4 lớp**: lịch sử (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git `, `npm `, `apt `, `python3 -m `, `systemctl `…), đường dẫn thật (`/mnt/share/…` đọc từ máy, `~/projects/<slug>`).
 - **Bảng kết quả**: mỗi lệnh một khối `$ lệnh` + output + trạng thái; nút ⤢ xem toàn màn hình, copy/share. Tab **Console thô** xem nguyên luồng serial.
-- **Chẩn đoán**: băng trạng thái nói rõ đang ở bước nào (QEMU khởi động → máy ảo boot → nối console → nhận byte đầu tiên). Gửi lệnh mà 8 giây không thấy trả lời thì app tự đóng/mở lại cổng serial (2 lần), kèm **Kiểm tra** / **Nối lại**.
+- **Chẩn đoán**: băng trạng thái nói rõ đang ở bước nào (QEMU khởi động → máy ảo boot → nối console → chờ prompt `dev@devbox` → nhận byte đầu tiên). Gửi lệnh mà ~10 giây không có output và console im lặng thì app đánh dấu **Debian không trả lời** (không tự đóng/mở lại cổng serial), kèm **Ctrl-C** / **Nối lại**.
 - **Ẩn bàn phím**: nút **Ẩn phím** trên hàng phím nhanh và nút **Ẩn bàn phím** trên bàn phím.
 - **↑ / ↓** gọi lại lệnh; lịch sử lưu trong `Documents/logs/shell.json` nên mở lại app vẫn còn.
 - **Snippet**: lưu lệnh hay dùng, bấm là chạy.
