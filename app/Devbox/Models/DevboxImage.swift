@@ -37,7 +37,15 @@ enum DevboxConfig {
 
     /// Cổng guest → host do QEMU forward. `PortWatcher` chỉ hiện những cổng
     /// này vì các cổng khác trong guest không mở được từ 127.0.0.1 trên iOS.
-    static let forwardedHostPorts = [3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000, 2222]
+    /// Danh sách phủ các cổng dev hay dùng: Next/Vite/Astro (3000, 5173, 4321),
+    /// Flask/FastAPI (5000, 8000), Gradio (7860), Streamlit (8501), Jupyter
+    /// (8888), http.server (8000, 8080). Cổng lạ vẫn dùng được qua proxy
+    /// (`WebProxy`) trỏ về một cổng trong danh sách này.
+    static let forwardedHostPorts = [
+        3000, 3001, 3002, 4000, 4173, 4174, 4200, 4321, 5000, 5001,
+        5173, 5174, 5175, 5500, 7860, 8000, 8001, 8002, 8080, 8081,
+        8082, 8083, 8443, 8501, 8888, 9000, 9001, 9090, 2222
+    ]
     static let displayedPorts = forwardedHostPorts.filter { $0 != 2222 }
 }
 

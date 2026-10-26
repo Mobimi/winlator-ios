@@ -115,13 +115,14 @@ Tab **Shell** là nơi làm việc chính: một ô nhập lệnh gửi thẳng 
 | **Snippet** | lưu sẵn `npm run dev`, `python3 -m http.server 8080`… bấm là chạy. |
 | **Trạng thái gửi** | `đã gửi` → `đang chạy` → `xong`, kèm ✓/✗ lấy từ `PROMPT_COMMAND` của bash (không đoán qua chữ "error"). |
 | **Sửa lỗi nhanh** | `command not found: rg` → chip `apt install -y ripgrep`; `npm error code EACCES` → đổi prefix `~/.local`; CRLF/`Permission denied`, hết đĩa, DNS… đều có chip sửa một chạm. |
+| **Bác sĩ lỗi** | lệnh thoát ≠ 0 hoặc khớp mẫu lỗi → thanh vàng ghi **vì sao** + nút **Chi tiết**: nhiều cách sửa xếp theo khả năng đúng, mỗi cách có **Chạy** hoặc **Điền vào ô nhập**, kèm lệnh **chẩn đoán chỉ đọc**. Có mẫu cho npm/pip/apt/python/node/git (chi tiết ở `docs/03-cli.md`). Không tự chạy gì. |
 | **Đưa file vào máy ảo** | menu ⋯ → **Đưa file vào máy ảo…**, chọn file/thư mục từ app Files → chép vào `share/_import` (Linux thấy ở `/mnt/share/_import`). |
 | **Kiểm tra nhanh** | menu ⋯ → **Kiểm tra nhanh (đĩa/mạng/node)**: `df`, `free`, DNS, TLS tới registry npm, `python3/node/npm`, `npm prefix`. |
 | **Cỡ chữ + xuất log** | menu **Aa** đổi cỡ chữ Kết quả/Console thô (11–16 pt, lưu lại); **Lưu kết quả vào Files (share)** ghi `Devbox/share/devbox-output.txt`. |
 | **Cảnh báo** | `rm -rf /`, `mkfs`, `dd if=`… phải xác nhận mới chạy. |
 | **Khi Debian không trả lời** | băng trạng thái nói rõ đang ở bước nào: QEMU khởi động → máy ảo boot → nối console 4444 → chờ prompt `dev@devbox` → nhận byte đầu tiên. Lệnh chỉ được gửi khi đã thấy prompt. Gửi lệnh mà ~10 giây không có output và console im lặng thì app đánh dấu **Debian không trả lời** (không tự đóng/mở lại cổng); bấm **Ctrl-C** để ngắt lệnh treo hoặc **Nối lại**. |
 | **Ẩn bàn phím** | nút **Ẩn phím** trên hàng phím nhanh, và nút **Ẩn bàn phím** ngay trên bàn phím — không phải chạm ra ngoài màn hình. |
-| **Cổng** | danh sách cổng đang mở, mở web, copy URL, tắt cổng (`devbox-killport`). |
+| **Cổng** | danh sách cổng đang mở, mở web, copy URL, tắt cổng (`devbox-killport`); cổng chưa forward hoặc server chỉ nghe `127.0.0.1` thì bấm **Chuyển qua proxy**. |
 | **Cài gói bổ sung** | menu ⋯ → cài `tmux`, `openssh-server`, `ripgrep`, `pkill`… ngay trong máy ảo. |
 
 Kích thước chữ tự khớp màn hình: app gửi `stty cols/rows` sau khi thấy prompt (một lần mỗi phiên) và khi khung nhìn đổi kích thước, nên bash không gãy dòng loạn.
@@ -139,10 +140,12 @@ ssh dev@127.0.0.1 -p 2222     # mật khẩu: dev
 Bạn không phải copy địa chỉ `localhost:5173` sang Safari.
 
 1. Guest có `portwatch.sh` đọc `/proc/net/tcp` mỗi giây, thấy cổng ≥1024 đang LISTEN thì ghi vào `/mnt/share/.ports`.
-2. App đọc `Documents/Devbox/share/.ports` mỗi 1.5 giây, **chỉ giữ các cổng đã được QEMU forward**, rồi thử HTTP `127.0.0.1:<cổng>`. QEMU forward sẵn 15 cổng từ lúc boot (3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000, 2222→22 cho SSH) nên không cần mở cổng động.
+2. App đọc `Documents/Devbox/share/.ports` mỗi 1.5 giây, **chỉ giữ các cổng đã được QEMU forward**, rồi thử HTTP `127.0.0.1:<cổng>`. QEMU forward sẵn 28 cổng từ lúc boot (3000–3002, 4000, 4173, 4174, 4200, 4321, 5000, 5001, 5173–5175, 5500, 7860, 8000–8002, 8080–8083, 8443, 8501, 8888, 9000, 9001, 9090, 2222→22 cho SSH) nên không cần mở cổng động.
 3. Cổng trả lời HTTP → app tự mở `WKWebView`. Nút **Web** trên terminal, hoặc tab **Shell → icon mạng**, liệt kê mọi cổng đang mở để mở lại, copy URL, tắt cổng.
 
-Áp dụng cho mọi thứ mở cổng HTTP trong danh sách trên: Vite, Next.js dev, `python3 -m http.server`, Flask, `uvicorn --port 3000`, `streamlit --server.port 8080`, Jupyter 8888… Cổng khác phải đổi về một trong các cổng đã forward.
+**Server chỉ nghe `127.0.0.1` (rất hay gặp với Python):** QEMU forward vào IP của guest (`10.0.2.15`), nên server bind loopback **không** vào được từ iOS dù cổng đã forward — app sẽ ghi "Không trả lời HTTP — có thể server chỉ nghe 127.0.0.1". Bấm **Chuyển qua proxy**: app chạy `devbox-webproxy.py` (có sẵn python3 trong image) nghe một cổng đã forward rồi chuyển tiếp vào `127.0.0.1:<cổng thật>`. Cổng lạ (8501 Streamlit, 7860 Gradio, 5001…) cũng đi qua proxy như vậy, không phải sửa code.
+
+Áp dụng cho mọi thứ mở cổng HTTP: Vite, Next.js dev, `python3 -m http.server`, Flask, `uvicorn --port 3000`, Streamlit, Jupyter 8888… Cổng ngoài danh sách forward thì dùng proxy.
 
 ---
 

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 struct ShellEntry: Identifiable {
     enum Status: Equatable {
@@ -94,6 +95,9 @@ final class ShellModel: ObservableObject {
     @Published private(set) var snippets: [String] = []
     @Published private(set) var cwd = "~"
     @Published private(set) var fix: CommandSuggestion?
+    /// Chẩn đoán đầy đủ cho lỗi vừa xảy ra: nguyên nhân + nhiều cách sửa.
+    /// `fix` chỉ là chip nhanh lấy từ `doctor.repairs.first`.
+    @Published private(set) var doctor: ErrorCase?
     @Published var alertCommand: String?
 
     private let store = SuggestionStore.shared
@@ -202,6 +206,52 @@ final class ShellModel: ObservableObject {
 
     func dismissFix() {
         fix = nil
+        doctor = nil
+    }
+
+    /// Chạy một cách sửa trong "bác sĩ lỗi". Lệnh dài (chuỗi nhiều bước) hiện
+    /// thành một khối riêng gắn nhãn "Sửa lỗi"; lệnh ngắn chạy như lệnh người
+    /// dùng gõ. Lệnh nguy hiểm vẫn đi qua hộp xác nhận như bình thường.
+    func runRepair(_ repair: Repair, guest: GuestConsole) {
+        guard guest.acceptsInput else { return }
+        switch repair.action {
+        case .run(let command):
+            if CommandCatalog.isDangerous(command) {
+                alertCommand = command
+                return
+            }
+            doctor = nil
+            fix = nil
+            if command.count > 180 {
+                begin(display: "Sửa lỗi", note: "tự sửa", guest: guest, line: command)
+            } else {
+                deliver(command, guest: guest)
+            }
+        case .copyTail:
+            UIPasteboard.general.string = tailText()
+        case .healthCheck:
+            healthCheck(guest: guest)
+        case .ports:
+            break
+        }
+    }
+
+    /// Điền lệnh vào ô nhập mà không chạy — để sửa đường dẫn/tham số trước.
+    func fillRepair(_ repair: Repair) {
+        guard let command = repair.command else { return }
+        doctor = nil
+        fix = nil
+        input = command
+        refresh()
+    }
+
+    func tailText() -> String {
+        let tail = entries.suffix(3).flatMap { entry -> [String] in
+            var lines = ["$ " + entry.command]
+            lines.append(contentsOf: entry.output.suffix(12))
+            return lines
+        }
+        return Array(tail.suffix(20)).joined(separator: "\n")
     }
 
     func applyFix() {
@@ -283,6 +333,30 @@ final class ShellModel: ObservableObject {
         guard guest.acceptsInput else { return }
         begin(display: "Tắt cổng \(port)", note: "cổng \(port)", guest: guest,
               line: "fuser -k \(port)/tcp 2>/dev/null; devbox-killport \(port) 2>/dev/null; true")
+    }
+
+    /// Server chỉ nghe `127.0.0.1` (Python/Flask/Streamlit…) hoặc cổng chưa
+    /// forward thì không vào được từ iOS. Chạy proxy TCP trong guest để mở nó
+    /// ra cổng `listen` (đã forward) — không phải sửa code của người dùng.
+    func openWebProxy(target: Int, listen: Int, guest: GuestConsole) {
+        guard guest.acceptsInput else { return }
+        guard WebProxy.ensureScript() else {
+            fix = CommandSuggestion(
+                text: "không ghi được script proxy",
+                detail: "Devbox/share không ghi được — kiểm tra dung lượng/ quyền",
+                kind: .fix,
+                fill: "ls -la /mnt/share | head"
+            )
+            return
+        }
+        begin(display: "Mở web \(target) → \(listen)", note: "proxy cổng \(listen)", guest: guest,
+              line: WebProxy.startCommand(listen: listen, target: target))
+    }
+
+    func stopWebProxy(listen: Int, guest: GuestConsole) {
+        guard guest.acceptsInput else { return }
+        begin(display: "Tắt proxy \(listen)", note: "proxy cổng \(listen)", guest: guest,
+              line: WebProxy.stopCommand(listen: listen))
     }
 
     func installExtras(guest: GuestConsole) {
@@ -399,6 +473,7 @@ final class ShellModel: ObservableObject {
         entries = []
         state = .idle
         fix = nil
+        doctor = nil
         silent = false
         consumedTotal = 0
         lastDiagnosis = ""
@@ -414,6 +489,7 @@ final class ShellModel: ObservableObject {
         store.record(command, dir: cwd)
         lastCommand = command
         fix = nil
+        doctor = nil
         lastDiagnosis = ""
         exitBase = guest.exitCount
         input = ""
@@ -434,6 +510,7 @@ final class ShellModel: ObservableObject {
     private func begin(display: String, note: String?, guest: GuestConsole, line: String) {
         lastCommand = display
         state = .sent
+        doctor = nil
         var entry = ShellEntry(command: display, note: note)
         entry.sentLine = line
         entries.append(entry)
@@ -542,6 +619,11 @@ final class ShellModel: ObservableObject {
         entries[index] = entry
         state = .done
         silent = false
+        // Mã thoát thật là tín hiệu chắc chắn nhất: lệnh hỏng thì chẩn đoán,
+        // kể cả khi thông báo lỗi không khớp mẫu chữ nào.
+        if let code = entry.exitCode, code != 0, entry.note == nil {
+            diagnose(entry.output, command: entry.command, exitCode: code)
+        }
     }
 
     private func tick(_ guest: GuestConsole) {
@@ -587,216 +669,54 @@ final class ShellModel: ObservableObject {
         return markers.contains { lower.contains($0) }
     }
 
-    /// Nhận ra các lỗi hay gặp khi chạy file vừa đưa từ máy vào hoặc cài CLI:
-    /// không tìm thấy file, CRLF của Windows, thiếu quyền chạy, npm EACCES,
-    /// hết đĩa, DNS của apt. Chỉ chẩn đoán khi lệnh do người dùng gõ (các
-    /// lệnh nội bộ có `note`).
-    private func diagnose(_ fresh: [String], command: String) {
+    /// Chẩn đoán lỗi sau khi lệnh kết thúc: đưa nguyên nhân + vài lệnh sửa.
+    ///
+    /// Hai nguồn kích hoạt: output chứa mẫu lỗi đã biết (`ErrorDoctor`), và
+    /// mã thoát ≠ 0 từ `PROMPT_COMMAND` — mã thoát bắt được cả lỗi không in
+    /// ra chữ nào. Không tự chạy gì; chỉ điền/thả chip cho người dùng bấm.
+    private func diagnose(_ fresh: [String], command: String, exitCode: Int? = nil) {
         // Script nội bộ dài hàng nghìn ký tự: điền lại vào ô nhập là vô nghĩa.
         guard command.count <= 300 else { return }
         // Chỉ xét cuối batch: npm in mã lỗi ở giữa rồi còn vài dòng tổng kết.
         // Nếu chỉ nhìn dòng khớp cuối cùng thì mất `code EACCES/ERESOLVE`.
         let window = Array(fresh.suffix(40))
         let scope = window.joined(separator: "\n").lowercased()
-        let markers = [
-            "no such file", "permission denied", "bad interpreter", "cannot execute",
-            "no space left", "temporary failure resolving", "could not resolve",
-            "network is unreachable", "unable to locate package",
-            "has no installation candidate", "npm error code", "npm err! code"
-        ]
-        guard markers.contains(where: { scope.contains($0) }) else { return }
-        let line = window.last { raw in
-            let text = raw.lowercased()
-            return text.contains("no such file") || text.contains("permission denied")
-                || text.contains("bad interpreter") || text.contains("cannot execute")
-                || text.contains("npm error code") || text.contains("npm err! code")
-        } ?? window.last ?? ""
-        let key = "\(command)|\(line)"
+        let errorLine = ErrorDoctor.errorLine(window)
+        let key = "\(command)|\(errorLine)|\(exitCode ?? -1)"
         guard lastDiagnosis != key else { return }
         lastDiagnosis = key
-        let token = Self.missingToken(in: line)
-        let script = command.split(separator: " ").last.map(String.init) ?? command
-        // Shebang dính `\r` (file lưu từ Windows): `/usr/bin/env: 'python3\r'`.
-        if scope.contains("bad interpreter") || (token?.contains("\r") ?? false) {
-            fix = CommandSuggestion(
-                text: "bỏ CRLF rồi chạy lại",
-                detail: "file có \\r của Windows — shebang không đọc được",
-                kind: .fix,
-                fill: "sed -i 's/\\r$//' \(Self.shellQuote(script)) && \(command)"
-            )
-            return
-        }
-        if let code = Self.npmCode(in: window) {
-            switch code {
-            case "EACCES":
-                // npm ghi vào /usr/local (của root) → EACCES hàng loạt. Chữa
-                // đúng là đổi prefix, không phải `chmod +x`.
-                fix = CommandSuggestion(
-                    text: "đổi npm prefix về ~/.local",
-                    detail: "npm ghi vào /usr/local của root nên bị EACCES",
-                    kind: .fix,
-                    fill: "npm config set prefix ~/.local && export PATH=\"$HOME/.local/bin:$PATH\" && \(command)"
-                )
-                return
-            case "ERESOLVE":
-                fix = CommandSuggestion(
-                    text: "bỏ qua xung đột peer",
-                    detail: "ERESOLVE: hai gói đòi hai phiên bản khác nhau",
-                    kind: .fix,
-                    fill: "\(command) --legacy-peer-deps"
-                )
-                return
-            case "EINTEGRITY":
-                fix = CommandSuggestion(
-                    text: "xoá cache npm rồi cài lại",
-                    detail: "EINTEGRITY: cache hỏng (hay gặp sau khi hết đĩa)",
-                    kind: .fix,
-                    fill: "npm cache clean --force && \(command)"
-                )
-                return
-            case "E404", "E403":
-                let package = Self.npmPackage(in: window)
-                fix = CommandSuggestion(
-                    text: "kiểm tra tên gói",
-                    detail: package.map { "\($0) không có trên npm (sai tên?)" }
-                        ?? "npm không tìm thấy gói này",
-                    kind: .fix,
-                    fill: package.map { "npm view \($0) version" } ?? "npm search --no-description"
-                )
-                return
-            case "ETARGET":
-                let package = Self.npmPackage(in: window)
-                fix = CommandSuggestion(
-                    text: "xem phiên bản có thật",
-                    detail: "ETARGET: không có phiên bản bạn xin",
-                    kind: .fix,
-                    fill: package.map { "npm view \($0) versions --json | tail -8" }
-                        ?? "npm view . versions --json | tail -8"
-                )
-                return
-            default:
-                break
+
+        let token = ErrorDoctor.missingToken(window)
+        let looksMissing = scope.contains("no such file") || scope.contains("can't open file")
+            || scope.contains("cannot find module")
+        // Thiếu file: app tìm được file trên iPhone (share/Projects) chính xác
+        // hơn mọi mẫu chung, và tự chép vào `_import` khi cần. `bad interpreter`
+        // cũng chứa "no such file" nên phải loại ra — lỗi đó là CRLF.
+        if looksMissing, !scope.contains("bad interpreter"), let token, !token.isEmpty {
+            doctor = ErrorDoctor.diagnose(command: command, lines: window, exitCode: exitCode)
+            fix = nil
+            let component = (token as NSString).lastPathComponent
+            if !component.isEmpty, component != ".", component != ".." {
+                locate(component, command: command)
             }
-        }
-        if scope.contains("eacces") {
-            fix = CommandSuggestion(
-                text: "đổi npm prefix về ~/.local",
-                detail: "npm ghi vào /usr/local của root nên bị EACCES",
-                kind: .fix,
-                fill: "npm config set prefix ~/.local && export PATH=\"$HOME/.local/bin:$PATH\" && \(command)"
-            )
             return
         }
-        if scope.contains("permission denied") {
-            let target = token ?? script
-            // Trên 9p (`security_model=none`) `chmod +x` có thể bị nuốt; gọi
-            // thẳng trình thông dịch chắc ăn hơn và không mất quyền gì.
-            if let runner = Self.interpreter(for: target) {
-                fix = CommandSuggestion(
-                    text: "chạy bằng \(runner)",
-                    detail: "file thiếu quyền chạy — gọi \(runner) trực tiếp",
-                    kind: .fix,
-                    fill: "\(runner) \(Self.shellQuote(target))"
-                )
+        // Bảng mẫu lỗi (npm/pip/apt/python/node/git) → nguyên nhân + lệnh sửa.
+        if let answer = ErrorDoctor.diagnose(command: command, lines: window, exitCode: exitCode) {
+            doctor = answer
+            // Chip nhanh trên bàn phím: chỉ lấy cách sửa đầu tiên có lệnh.
+            if let first = answer.repairs.first(where: { $0.command != nil }),
+               let fill = first.command {
+                fix = CommandSuggestion(text: first.title, detail: answer.headline, kind: .fix, fill: fill)
             } else {
-                fix = CommandSuggestion(
-                    text: "cấp quyền chạy",
-                    detail: "file chưa có +x — chmod rồi chạy lại",
-                    kind: .fix,
-                    fill: "chmod +x \(Self.shellQuote(target)) && \(command)"
-                )
+                fix = nil
             }
-            return
-        }
-        // Ba nhóm lỗi môi trường hay gặp khi cài CLI/agent.
-        if scope.contains("no space left") {
-            fix = CommandSuggestion(
-                text: "dọn dung lượng máy ảo",
-                detail: "đĩa ảo đầy — xem df -h rồi xoá cache",
-                kind: .fix,
-                fill: "df -h; sudo apt-get clean; rm -rf ~/.cache/pip ~/.npm/_cacache; df -h"
-            )
-            return
-        }
-        if scope.contains("temporary failure resolving") || scope.contains("could not resolve")
-            || scope.contains("network is unreachable") {
-            fix = CommandSuggestion(
-                text: "kiểm tra mạng máy ảo",
-                detail: "không phân giải được tên miền — apt/pip/npm sẽ lỗi hàng loạt",
-                kind: .fix,
-                fill: "ping -c1 10.0.2.2; echo 'nameserver 10.0.2.3' | sudo tee /etc/resolv.conf; \(command)"
-            )
-            return
-        }
-        if scope.contains("unable to locate package") || scope.contains("has no installation candidate") {
-            fix = CommandSuggestion(
-                text: "cập nhật danh sách gói",
-                detail: "apt chưa biết gói này — cần apt-get update",
-                kind: .fix,
-                fill: "sudo apt-get update && \(command)"
-            )
             return
         }
         guard let path = token else { return }
         let name = (path as NSString).lastPathComponent
         guard !name.isEmpty, name != ".", name != ".." else { return }
         locate(name, command: command)
-    }
-
-    private static func interpreter(for path: String) -> String? {
-        switch (path as NSString).pathExtension.lowercased() {
-        case "py": return "python3"
-        case "sh", "bash": return "bash"
-        case "js", "mjs", "cjs": return "node"
-        default: return nil
-        }
-    }
-
-    /// `npm error code ERESOLVE` → "ERESOLVE".
-    private static func npmCode(in lines: [String]) -> String? {
-        for raw in lines.reversed() {
-            let lower = raw.lowercased()
-            guard let range = lower.range(of: "npm error code ")
-                    ?? lower.range(of: "npm err! code ") else { continue }
-            let tail = lower[range.upperBound...]
-            let code = String(tail.prefix { !$0.isWhitespace })
-            if !code.isEmpty { return code.uppercased() }
-        }
-        return nil
-    }
-
-    /// Tên gói trong URL registry của npm (E404/ETARGET in ra).
-    private static func npmPackage(in lines: [String]) -> String? {
-        for raw in lines.reversed() {
-            guard let range = raw.range(of: "registry.npmjs.org/") else { continue }
-            let tail = raw[range.upperBound...]
-            let name = String(tail.prefix { $0 != " " && $0 != "/" && $0 != "?" })
-            let decoded = name.removingPercentEncoding ?? name
-            if !decoded.isEmpty { return decoded }
-        }
-        return nil
-    }
-
-    /// Lấy tên file/hướng dẫn từ dòng lỗi của bash/python.
-    private static func missingToken(in line: String) -> String? {
-        if let open = line.range(of: "can't open file '"), let close = line[open.upperBound...].firstIndex(of: "'") {
-            return String(line[open.upperBound..<close])
-        }
-        if let marker = line.range(of: "bad interpreter: ") {
-            let tail = line[marker.upperBound...].trimmingCharacters(in: .whitespaces)
-            return tail.isEmpty ? nil : tail
-        }
-        for suffix in [": No such file or directory", ": Permission denied", ": not found"] {
-            if let range = line.range(of: suffix) {
-                let head = line[..<range.lowerBound]
-                // "bash: ./x.py" / "sh: 1: ./x.py" → lấy đoạn sau dấu ':' cuối.
-                if let colon = head.lastIndex(of: ":") {
-                    let tail = head[head.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-                    if !tail.isEmpty { return tail }
-                }
-            }
-        }
-        return nil
     }
 
     /// Tìm file cùng tên (không phân biệt hoa/thường) trong các thư mục mà

@@ -17,10 +17,12 @@
 │  ├─ TerminalView        terminal + bàn phím + phím tắt           │
 │  ├─ WebPreviewView      WKWebView + banner localhost:<port>      │
 │  ├─ SetupView           JIT, image, engine, web preview, log     │
+│  ├─ ErrorDoctor         bảng mẫu lỗi → lệnh sửa (offline)        │
 │  └─ QEMUEngine          dlopen qemu-aarch64-softmmu.framework    │
 │       ├─ qemu_init / qemu_main_loop / qemu_cleanup trên Thread   │
 │       ├─ GuestConsole   TCP 127.0.0.1:4444 (serial console)      │
 │       ├─ QMPClient      TCP 127.0.0.1:4445 (quit)                │
+│       ├─ WebProxy       devbox-webproxy.py trong guest (127.0.0.1)│
 │       └─ PortWatcher    Documents/Devbox/share/.ports            │
 └──────────────────────────────────────────────────────────────────┘
                                  │
@@ -28,7 +30,7 @@
 │ -M virt -cpu max -smp 4 -m 1792 -accel tcg,thread=multi          │
 │ virtio-blk  : rootfs.ext4 (raw, ghi trực tiếp)                   │
 │ virtio-9p   : /mnt/share ↔ Documents/Devbox/share                │
-│ virtio-net  : user-mode NAT + hostfwd 3000/5173/8080             │
+│ virtio-net  : user-mode NAT + hostfwd 29 cổng dev                │
 │ pl011       : -serial chardev socket localhost:4444              │
 │ -display none -nodefaults -no-user-config                        │
 └──────────────────────────────────────────────────────────────────┘
@@ -76,7 +78,9 @@ Ghi chú kỹ thuật:
 | Không spawn được process | Nhúng QEMU dưới dạng `.framework`, gọi trực tiếp `qemu_init`/`qemu_main_loop`/`qemu_cleanup`. `atexit` guard gọi `pthread_exit` nếu QEMU gọi `exit()`, tránh chết cả app. |
 | Console | QEMU `-chardev socket,…,port=4444,logfile=…/logs/serial.log` + `-serial chardev:con`. Khi đã nối socket, app hiển thị trực tiếp byte nhận từ socket; trước khi nối (boot), khi socket đứt, hoặc khi socket im lặng >5 giây (QEMU chưa attach client dù TCP đã `.ready`), app tạm đọc `serial.log` để không mất chữ. `qemu_chr_write_buffer` ghi mọi byte guest in ra vào logfile kể cả lúc chưa có client, nên file này vẫn là log đầy đủ để chẩn đoán. App tail file 4 lần/giây (`GuestConsole.drainSerial`), đẩy qua `ANSIParser`, và giữ buffer UTF-8 dở dang giữa hai lần đọc. File được truncate mỗi lần boot (app xoá trước khi boot). |
 | Chẩn đoán console | Mỗi lần nối/nối lại, app hỏi QMP: `query-status`, `query-chardev` (serial đã có client chưa), `query-blockstats` (`rd_bytes` — bằng chứng guest thật sự đọc đĩa), và đọc mtime `Documents/Devbox/share/.ports` (portwatch ghi lại mỗi giây) làm nhịp tim của guest. Ở t+21s và t+91s app còn chạy HMP: `info registers` (lấy `PC`), `info cpus`, `info jit`, `xp /6i <PC>` (mã lệnh đang chạy) và `xp /16wx 0x40000000` (16 word đầu của RAM, kiểm tra kernel đã được nạp). Tất cả ghi vào `Documents/logs/qemu.log` dưới dạng `console: …` / `guest: …` / `cpus: …`. Tự mở lại socket khi lệnh im lặng đã bỏ: nó tạo bão reconnect (31 lần) và làm nghẽn listener `backlog=1`; chỉ còn nút **Nối lại** và lần quay lại foreground, có backoff 3→30 giây. `chardev-change` không dùng được: PL011 (`hw/char/pl011.c`) gọi `qemu_chr_fe_set_handlers` với `be_change = NULL` nên QEMU trả lỗi “does not support chardev hotswap”. |
-| Cổng web | Forward cố định 15 cổng lúc boot: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222→22 (SSH). QEMU không thêm được hostfwd sau khi chạy. |
+| Cổng web | Forward cố định 28 cổng lúc boot: 3000–3002, 4000, 4173, 4174, 4200, 4321, 5000, 5001, 5173–5175, 5500, 7860, 8000–8002, 8080–8083, 8443, 8501, 8888, 9000, 9001, 9090 và 2222→22 (SSH). QEMU không thêm được hostfwd sau khi chạy. |
+| Server chỉ nghe `127.0.0.1` | `hostfwd=tcp:127.0.0.1:HOST-:PORT` đẩy vào **IP guest** (`10.0.2.15`), nên server bind loopback không vào được từ iOS. App chạy `devbox-webproxy.py` (python3 có sẵn) trong guest: nghe `0.0.0.0:<cổng đã forward>` rồi chuyển byte hai chiều vào `127.0.0.1:<cổng thật>`. Proxy dùng `threading` + `recv/sendall` nên WebSocket/HMR của Vite vẫn chạy; pidfile `share/.webproxy-<listen>.pid`, log `.log`. Cổng chưa forward cũng mở được qua proxy. |
+| Bác sĩ lỗi | `ErrorDoctor.swift` là bảng mẫu lỗi offline (npm/pip/apt/python/node/git/shell), mỗi mẫu → nguyên nhân tiếng Việt + cách sửa xếp hạng + lệnh chẩn đoán chỉ đọc. Mã thoát thật lấy từ `PROMPT_COMMAND='printf "__DEVBOX_EXIT:%s\n" "$?"'` (cài một lần mỗi boot); `ShellModel.diagnose` chỉ gọi khi exit ≠ 0 hoặc khớp mẫu. Không tự chạy gì, không gọi mạng. |
 | Tab Shell | Dùng chung console 4444. Gợi ý lệnh tính trên máy (`CommandSuggestions.swift`): lịch sử có trọng số theo thư mục (`Documents/logs/shell.json`), từ điển lệnh + lệnh con, và đường dẫn thật (`/mnt/share` đọc từ `Documents/Devbox/share`, `~/projects` đọc từ `Documents/Projects`; thư mục guest `~/projects/<slug>` được tạo khi mở dự án lần đầu). Không gọi mạng. |
 | stty | Sau khi nối console và mỗi lần đổi kích thước, app gửi `stty cols N rows M` để bash xuống dòng đúng bề rộng. Serial không có ioctl cửa sổ nên đây là cách duy nhất. |
 | Tắt cổng | `devbox-killport <port>` đọc `/proc/net/tcp{,6}`, tìm inode LISTEN rồi `kill` PID tương ứng; fallback `fuser -k`. |
@@ -90,7 +94,7 @@ Ghi chú kỹ thuật:
 | 9p | Chỉ dùng cho `share/.ports` và trao đổi file; dự án nằm trên ext4 trong image. |
 | Mạng trong guest | systemd-networkd cấu hình tĩnh `eth0 = 10.0.2.15/24`, gateway `10.0.2.2`, DNS `10.0.2.3` — đúng topology slirp, không cần DHCP. |
 | Console không phải terminal grid | Parser theo dòng: `vim`/`htop`/`less` hiển thị lộn xộn. Chưa gửi SIGWINCH. |
-| Port forward | Cố định 3000/5173/8080 lúc boot (bind lỗi sẽ làm QEMU thoát, nên giữ ít cổng). Dev server phải nghe đúng một trong ba cổng này. |
+| Port forward | Cố định 28 cổng lúc boot (bind lỗi sẽ làm QEMU thoát, nên danh sách cố định, không mở động). Dev server nghe cổng bất kỳ thì mở qua proxy. |
 | Đóng gói | CI build QEMU cho iOS, đổi mỗi `.dylib` thành `.framework`, sửa `install_name` sang `@rpath/<name>.framework/<name>`, phát hành zip ở release `engine-v1`; workflow IPA tải zip và nhúng vào `Payload/Devbox.app/Frameworks`. |
 | Kích thước | `qemu-aarch64-softmmu` ~27 MB + glib/gio/pixman/slirp/zstd ~5 MB. IPA ~7 MB. |
 
@@ -108,6 +112,7 @@ Documents/Devbox/
 │       └── manifest.json      # phiên bản + sha256
 ├── share/                     # 9p, mount tại /mnt/share
 │   ├── .ports                 # portwatch.sh ghi cổng đang LISTEN
+│   ├── devbox-webproxy.py     # proxy do app ghi khi cần mở 127.0.0.1
 │   └── ...                    # file trao đổi với guest
 └── Projects/                  # thư mục phía app (KHÔNG auto-mount; muốn đưa file vào guest thì qua share/)
 ```

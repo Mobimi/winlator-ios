@@ -41,8 +41,10 @@
 | Image có python3 + pip + venv + node + npm + npx + git + gcc | `node -v`, `pip --version` chạy | ✅ có trong image |
 | Chia sẻ file qua 9p | File trong `Documents/Devbox/share` thấy ở `/mnt/share` | ✅ |
 | Guest agent phát hiện cổng | `/mnt/share/.ports` cập nhật trong ≤ 2 s | ✅ `portwatch.service` |
-| Port forward | `curl 127.0.0.1:5173` từ app trả HTML | ✅ cố định 3000/5173/8080 |
+| Port forward | `curl 127.0.0.1:5173` từ app trả HTML | ✅ cố định 28 cổng |
 | Web preview | `npm run dev -- --host 0.0.0.0` → **tự mở WKWebView** | ✅ code xong, chờ xác nhận trên máy |
+| Server chỉ nghe `127.0.0.1` | Flask/uvicorn/http.server bind loopback vẫn mở được web | ✅ proxy TCP trong guest (0.4.0) |
+| Bác sĩ lỗi | Lệnh lỗi → gợi ý lệnh sửa, không cần đoán | ✅ 0.4.0 (bảng mẫu offline) |
 | Lưu dữ liệu qua reboot | Tắt/mở app, file vẫn còn | ✅ vì rootfs.ext4 ghi trực tiếp |
 | Import/export dự án | Nút Xuất → file trong Files.app | ⬜ chưa làm |
 | Reset máy ảo | Xoá image, giữ dữ liệu | ⬜ xoá image = reset toàn bộ |
@@ -115,6 +117,8 @@ So với hướng Winlator (9–12 tháng), đây là dự án nhỏ hơn khoả
 - [ ] Tab **Thiết lập** → **Tải và cài image (~500 MB)**. Giữ app mở, cần ~3 GB trống.
 - [ ] Mở tab **Shell** → chờ boot (30–90 giây) → thấy `dev@devbox:~$`.
 - [ ] Gõ thử `gi` (gợi ý `git`), `cd /mnt/share/` (gợi ý file thật), `python3 -V`, `node -v`, `npm -v` và gửi kết quả.
+- [ ] Chạy `python3 -m http.server 8501` (chỉ nghe `127.0.0.1`) → tab **Shell** → icon mạng → dòng 8501 có cảnh báo → **Chuyển qua proxy** → mở web được.
+- [ ] Gõ `npm -g install deepseek-ai/dsh` → thanh vàng **Bác sĩ lỗi** → **Chi tiết** → **Chạy** cách *Cài từ GitHub*.
 - [ ] Bấm Home 2 phút, quay lại, xem đồng hồ "Đã chạy" trong tab Thiết lập có tăng tiếp không.
 
 Nếu có lỗi: tab **Thiết lập** → **Sao chép chẩn đoán**, và gửi file `qemu.log` + `diagnostics.txt` trong app Files (`Trên iPhone của tôi → Devbox → logs`) hoặc bấm **Chia sẻ file log**.

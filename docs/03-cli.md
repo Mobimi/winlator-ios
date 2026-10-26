@@ -212,13 +212,14 @@ Từ **0.3.0 (11)**, app tự làm hai việc mỗi lần boot: thêm `~/.local/
 
 | Mã | Nghĩa | Cách sửa trong app |
 |---|---|---|
-| `EACCES` | không có quyền ghi `/usr/local/lib/node_modules` | chip gợi ý đổi `npm config set prefix ~/.local`; hoặc bấm **Cài gói bổ sung** một lần |
-| `ENOSPC` | hết đĩa (image chỉ còn ~440 MB cho `dev`) | chip gợi ý `apt-get clean` + xoá `~/.npm/_cacache`, `~/.cache/pip`; xem `df -h /` |
-| `ERESOLVE` | xung đột peer dependency | chip thêm `--legacy-peer-deps` (chỉ dùng khi hiểu rủi ro) |
-| `EINTEGRITY` | cache npm hỏng, hay gặp sau khi hết đĩa | chip chạy `npm cache clean --force` rồi cài lại |
-| `E404` / `E403` | sai tên gói hoặc registry chặn | chip chạy `npm view <gói> version` để kiểm tra tên |
-| `ETARGET` | phiên bản bạn xin không tồn tại | chip chạy `npm view <gói> versions --json \| tail -8` |
-| `ETIMEDOUT` / `ENOTFOUND` | mạng/DNS của máy ảo | menu ⋯ → **Kiểm tra nhanh**; chip DNS sửa `/etc/resolv.conf` |
+| `EACCES` | không có quyền ghi `/usr/local/lib/node_modules` | **Bác sĩ lỗi** → *Đổi prefix về ~/.local*; hoặc bấm **Cài gói bổ sung** một lần |
+| `ENOSPC` | hết đĩa (image chỉ còn ~440 MB cho `dev`) | **Bác sĩ lỗi** → *Dọn cache* + xem `df -h /` |
+| `ERESOLVE` | xung đột peer dependency | **Bác sĩ lỗi** → *Bỏ qua kiểm tra peer* (`--legacy-peer-deps`, chỉ dùng khi hiểu rủi ro) |
+| `EINTEGRITY` | cache npm hỏng, hay gặp sau khi hết đĩa | **Bác sĩ lỗi** → *Xoá cache rồi cài lại* |
+| `E404` / `E403` | sai tên gói, hoặc `owner/repo` GitHub | **Bác sĩ lỗi** → *Cài từ GitHub* (`github:owner/repo`) — xem ví dụ dưới |
+| `ETARGET` | phiên bản bạn xin không tồn tại | **Bác sĩ lỗi** → *Xem bản có thật* / *Cài bản mới nhất* |
+| `ETIMEDOUT` / `ENOTFOUND` | mạng/DNS của máy ảo | **Bác sĩ lỗi** → *Sửa DNS rồi cài lại*; menu ⋯ → **Kiểm tra nhanh** |
+| `EBADENGINE` | gói đòi Node khác (image là Node 22) | **Bác sĩ lỗi** → *Tắt kiểm tra engines* hoặc cài bản cũ hơn |
 
 Nếu vẫn lỗi, gửi đúng 20 dòng đầu chứ không cần cả log:
 
@@ -226,6 +227,63 @@ Nếu vẫn lỗi, gửi đúng 20 dòng đầu chứ không cần cả log:
 npm install 2>&1 | head -20
 # hoặc menu ⋯ → Sao chép 20 dòng cuối
 ```
+
+## Bác sĩ lỗi — vì sao lỗi và gõ gì để sửa
+
+Từ **0.4.0 (12)**, khi một lệnh bạn gõ thoát với mã ≠ 0 (hoặc output khớp mẫu lỗi đã biết), app hiện **thanh vàng** phía trên ô nhập: một dòng *vì sao* + cách sửa đầu tiên + nút **Chi tiết**. Bấm **Chi tiết** (hoặc menu ⋯ → **Sửa lỗi gần nhất…**) để xem:
+
+- **Vì sao** — giải thích bằng tiếng Việt, không phải stack trace.
+- **Dòng lỗi** — dòng đáng chú ý nhất, bôi đen/chép được; kèm nút chép 20 dòng cuối.
+- **Cách sửa** — xếp theo khả năng đúng, mỗi cách có **Chạy** (chạy ngay thành một khối kết quả riêng) hoặc **Điền vào ô nhập** (sửa đường dẫn rồi mới gửi).
+- **Chẩn đoán thêm** — lệnh chỉ đọc, không đổi gì trong máy ảo (`df -h`, `npm config get prefix`, `curl -sI`…).
+
+App **không tự chạy gì**: mọi lệnh sửa đều phải do bạn bấm, và lệnh nguy hiểm vẫn qua hộp xác nhận như bình thường. Đây không phải AI — nó là bảng mẫu lỗi thật đã gặp, nên lỗi lạ sẽ chỉ hiện các bước kiểm tra an toàn chứ không đoán bừa.
+
+### Ví dụ: cài CLI từ GitHub
+
+```bash
+npm -g install deepseek-ai/dsh
+# npm error code E404
+# npm error 404 Not Found - GET https://registry.npmjs.org/deepseek-ai%2fdsh
+```
+
+`npm` hiểu `deepseek-ai/dsh` là **tên gói trên registry**, không phải repo GitHub, nên trả 404. Bác sĩ lỗi sẽ nhận ra dạng `owner/repo` và đề nghị:
+
+```bash
+npm i -g github:deepseek-ai/dsh          # cài thẳng từ GitHub qua git
+# hoặc không cần git:
+npm i -g https://github.com/deepseek-ai/dsh/archive/refs/heads/main.tar.gz
+# hoặc clone rồi cài tại chỗ (xem/sửa được lỗi build):
+git clone https://github.com/deepseek-ai/dsh ~/src/dsh && cd ~/src/dsh && npm i && npm i -g .
+```
+
+Muốn tự kiểm tra trước khi cài: `git ls-remote https://github.com/deepseek-ai/dsh HEAD` (repo riêng tư hoặc gõ sai tên cũng trả 404 y như vậy).
+
+### Các nhóm lỗi đã có mẫu
+
+| Nhóm | Ví dụ dòng lỗi | Bác sĩ lỗi gợi ý |
+|---|---|---|
+| npm | `npm error code ERESOLVE/EACCES/ENOSPC/E404/ETARGET/EBADENGINE/EJSONPARSE/ENOENT/ELIFECYCLE` | sửa đúng mã, xem bảng trên |
+| node-gyp | `gyp ERR! stack Error: not found: make` | `apt-get install build-essential python3-dev` rồi cài lại |
+| pip | `externally-managed-environment` | tạo `~/.venv` rồi `pip install` trong venv |
+| pip | `No matching distribution found` | `pip index versions <gói>`, đổi tên gói (map sẵn `cv2`→`opencv-python`, `PIL`→`pillow`…) |
+| pip | `Failed building wheel for …` | cài `build-essential python3-dev`, hoặc `--only-binary=:all:` |
+| python | `ModuleNotFoundError: No module named 'cv2'` | cài đúng tên gói PyPI, kèm bản `apt` |
+| python | `SyntaxError` / `IndentationError` | `py_compile` in dòng lỗi, `expand -t4` chuẩn hoá tab |
+| python | `UnicodeDecodeError` | `iconv -f CP1252 -t UTF-8` |
+| shell | `bad interpreter: …\r` | `sed -i 's/\r$//' <file>` (file lưu từ Windows) |
+| shell | `<lệnh>: command not found` | `apt-get install` hoặc `npm i -g` |
+| mạng | `Temporary failure resolving …` | ghi lại `nameserver 10.0.2.3` vào `/etc/resolv.conf` |
+| đĩa | `No space left on device` | dọn apt/npm/pip cache, xem `du -xh ~` |
+| cổng | `Address already in use` / `EADDRINUSE` | `fuser -k <cổng>/tcp` rồi chạy lại |
+| apt | `Unable to locate package …` | `apt-get update` rồi cài, hoặc `apt-cache search` |
+| apt | `dpkg was interrupted` / `Could not get lock` | `dpkg --configure -a` rồi chạy lại |
+| git | `Permission denied (publickey)` | đổi `git@github.com:` sang HTTPS, hoặc tạo khoá SSH |
+| quyền | `Permission denied` | chạy `python3 <file>`, `chmod +x`, hoặc chép vào `~/bin` |
+| file | `No such file or directory` / `Cannot find module` | tìm trong `/mnt/share`, đưa file vào `share/_import` |
+| tài nguyên | `Killed` | giảm việc cho npm, xem `free -m` |
+
+Lỗi không khớp mẫu nào: app vẫn đưa **Sao chép 20 dòng cuối** + **kiểm tra nhanh** (đĩa, RAM, DNS, python/node), không đoán mò. Gửi 20 dòng đó kèm mã lỗi là cách nhanh nhất để bổ sung mẫu mới vào app.
 
 ## Ngân sách tài nguyên (số thật)
 

@@ -33,7 +33,9 @@ struct ShellView: View {
             VStack(spacing: 0) {
                 statusBar
                 output
-                if let fix = model.fix {
+                if model.doctor != nil {
+                    doctorBar
+                } else if let fix = model.fix {
                     fixBar(fix)
                 }
                 suggestionBar
@@ -77,6 +79,8 @@ struct ShellView: View {
                         Image(systemName: "bookmark")
                     }
                     Menu {
+                        Button("Sửa lỗi gần nhất…") { sheet = .doctor }
+                            .disabled(model.doctor == nil)
                         Button("Lịch sử lệnh") { sheet = .history }
                         Button("Xoá màn hình") { model.clear(guest: guest) }
                         Button("Kiểm tra nhanh (đĩa/mạng/node)") {
@@ -132,6 +136,8 @@ struct ShellView: View {
                     snippetsSheet
                 case .ports:
                     portsSheet
+                case .doctor:
+                    doctorSheet
                 }
             }
             .sheet(item: $preview) { target in
@@ -663,6 +669,178 @@ struct ShellView: View {
         .background(Color.yellow.opacity(0.08))
     }
 
+    /// Thanh gọn cho lỗi vừa xảy ra: nguyên nhân + cách sửa đầu tiên + nút mở
+    /// chi tiết. Không tự chạy gì — mọi lệnh sửa đều phải do người dùng bấm.
+    @ViewBuilder
+    private var doctorBar: some View {
+        if let doctor = model.doctor {
+            HStack(spacing: 8) {
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(doctor.headline)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                        .lineLimit(2)
+                    if let first = doctor.repairs.first {
+                        Text(first.title)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.yellow.opacity(0.8))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 4)
+                if let first = doctor.repairs.first, first.command != nil {
+                    Button {
+                        model.runRepair(first, guest: guest)
+                    } label: {
+                        Text("Chạy")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.yellow.opacity(0.18), in: Capsule())
+                            .foregroundStyle(.yellow)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button("Chi tiết") { sheet = .doctor }
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .buttonStyle(.plain)
+                Button {
+                    model.dismissFix()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(Color.yellow.opacity(0.08))
+        }
+    }
+
+    private var doctorSheet: some View {
+        NavigationStack {
+            Group {
+                if let doctor = model.doctor {
+                    List {
+                        Section("Vì sao") {
+                            Text(doctor.headline)
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(doctor.cause)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Section {
+                            Text(doctor.errorLine.isEmpty ? "(không có output)" : doctor.errorLine)
+                                .font(.system(size: 11, design: .monospaced))
+                                .textSelection(.enabled)
+                            Button("Sao chép 20 dòng cuối") {
+                                UIPasteboard.general.string = model.tailText()
+                                copied = true
+                            }
+                        } header: {
+                            Text("Dòng lỗi")
+                        } footer: {
+                            Text("Gửi dòng này (hoặc 20 dòng cuối) nếu cách sửa bên dưới không đúng.")
+                        }
+                        Section {
+                            ForEach(doctor.repairs) { repair in
+                                repairRow(repair, primary: true)
+                            }
+                        } header: {
+                            Text("Cách sửa — bấm để chạy")
+                        } footer: {
+                            Text("App không tự chạy gì. Lệnh dài hiện thành một khối kết quả riêng để xem nó làm gì.")
+                        }
+                        if !doctor.probes.isEmpty {
+                            Section {
+                                ForEach(doctor.probes) { repair in
+                                    repairRow(repair, primary: false)
+                                }
+                            } header: {
+                                Text("Chẩn đoán thêm (chỉ đọc)")
+                            } footer: {
+                                Text("Các lệnh này không đổi gì trong máy ảo — chạy trước để biết chắc nguyên nhân.")
+                            }
+                        }
+                    }
+                } else {
+                    List {
+                        Text("Không còn chẩn đoán nào. Lỗi tiếp theo sẽ hiện ở đây.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Sửa lỗi")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Đóng") { sheet = nil }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func repairRow(_ repair: Repair, primary: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(repair.title)
+                .font(.system(size: 13, weight: .semibold))
+            Text(repair.detail)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            if let command = repair.command {
+                Text(command)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
+            HStack(spacing: 8) {
+                switch repair.action {
+                case .ports:
+                    Button("Mở danh sách cổng") { sheet = .ports }
+                        .buttonStyle(.bordered)
+                case .healthCheck:
+                    Button("Chạy kiểm tra") {
+                        model.runRepair(repair, guest: guest)
+                        sheet = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!guest.acceptsInput)
+                case .copyTail:
+                    Button("Sao chép") {
+                        model.runRepair(repair, guest: guest)
+                        copied = true
+                        sheet = nil
+                    }
+                    .buttonStyle(.bordered)
+                case .run:
+                    Button(primary ? "Chạy" : "Chạy thử") {
+                        model.runRepair(repair, guest: guest)
+                        sheet = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!guest.acceptsInput)
+                    Button("Điền vào ô nhập") {
+                        model.fillRepair(repair)
+                        sheet = nil
+                        focused = true
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+            .font(.caption)
+        }
+        .padding(.vertical, 2)
+    }
+
     private var suggestionBar: some View {
         Group {
             if model.suggestions.isEmpty {
@@ -890,32 +1068,81 @@ struct ShellView: View {
                     }
                     ForEach(ports.ports, id: \.self) { port in
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("localhost:\(port)")
-                                .font(.system(size: 13, design: .monospaced))
-                            HStack(spacing: 8) {
-                                Button("Mở web") {
-                                    sheet = nil
-                                    preview = PreviewTarget(port: port)
+                            HStack(spacing: 6) {
+                                Text("localhost:\(port)")
+                                    .font(.system(size: 13, design: .monospaced))
+                                if let target = ports.proxies[port] {
+                                    Text("→ máy ảo \(target)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(.green)
                                 }
-                                .buttonStyle(.bordered)
-
-                                Button("Copy URL") {
-                                    UIPasteboard.general.string = "http://127.0.0.1:\(port)/"
-                                    copied = true
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button("Tắt cổng", role: .destructive) {
-                                    model.kill(port: port, guest: guest)
-                                }
-                                .buttonStyle(.bordered)
                             }
-                            .font(.caption)
+                            if ports.proxies[port] == nil, ports.silentPorts.contains(port) {
+                                Text("Không trả lời HTTP — có thể server chỉ nghe 127.0.0.1 trong máy ảo.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    Button("Mở web") {
+                                        sheet = nil
+                                        preview = PreviewTarget(port: port)
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    Button("Copy URL") {
+                                        UIPasteboard.general.string = "http://127.0.0.1:\(port)/"
+                                        copied = true
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    if ports.proxies[port] != nil {
+                                        Button("Tắt proxy", role: .destructive) {
+                                            stopProxy(port)
+                                        }
+                                        .buttonStyle(.bordered)
+                                    } else if ports.silentPorts.contains(port) {
+                                        Button("Thử lại") { ports.retry(port) }
+                                            .buttonStyle(.bordered)
+                                        Button("Chuyển qua proxy") { openProxy(port) }
+                                            .buttonStyle(.bordered)
+                                    }
+
+                                    Button("Tắt cổng", role: .destructive) {
+                                        model.kill(port: port, guest: guest)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                .font(.caption)
+                            }
                         }
                         .padding(.vertical, 2)
                     }
                 } header: {
                     Text("Cổng web (tự phát hiện)")
+                } footer: {
+                    Text("Các cổng này đã được QEMU forward nên iOS mở được. “Chuyển qua proxy” dùng khi server chỉ nghe 127.0.0.1 trong máy ảo.")
+                }
+
+                if !ports.unreachable.isEmpty {
+                    Section {
+                        ForEach(ports.unreachable, id: \.self) { port in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("máy ảo:\(port)")
+                                    .font(.system(size: 13, design: .monospaced))
+                                Text("Cổng này chưa forward ra iOS nên bấm vào không mở được.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                                Button("Mở ra ngoài (proxy)") { openProxy(port) }
+                                    .buttonStyle(.bordered)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } header: {
+                        Text("Chỉ nghe trong máy ảo")
+                    } footer: {
+                        Text("App chạy một proxy TCP nhỏ trong máy ảo: nghe cổng đã forward rồi chuyển vào 127.0.0.1:<cổng này>. Cần python3 (có sẵn trong image).")
+                    }
                 }
 
                 Section {
@@ -1111,6 +1338,28 @@ struct ShellView: View {
 
     /// Người dùng chọn file/thư mục từ app Files: chép vào `share/_import`
     /// (9p → `/mnt/share/_import`) rồi điền sẵn lệnh xem thư mục đó.
+    /// Mở server chỉ nghe loopback (hoặc cổng chưa forward) ra ngoài bằng proxy
+    /// TCP chạy trong guest. Chọn cổng nghe từ danh sách đã forward.
+    private func openProxy(_ target: Int) {
+        guard guest.acceptsInput else { return }
+        guard let listen = ports.listenPort(for: target) else {
+            importNote = "Hết cổng trống để làm proxy — tắt bớt server khác"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { importNote = nil }
+            return
+        }
+        ports.startProxy(listen: listen, target: target)
+        model.openWebProxy(target: target, listen: listen, guest: guest)
+        sheet = nil
+        importNote = "Đang mở máy ảo:\(target) qua localhost:\(listen)…"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { importNote = nil }
+    }
+
+    private func stopProxy(_ listen: Int) {
+        model.stopWebProxy(listen: listen, guest: guest)
+        ports.stopProxy(listen: listen)
+        sheet = nil
+    }
+
     private func handleImport(_ result: Result<[URL], Error>) {
         guard case .success(let urls) = result, !urls.isEmpty else { return }
         let model = self.model
@@ -1174,6 +1423,7 @@ private enum ShellSheet: String, Identifiable {
     case history
     case snippets
     case ports
+    case doctor
 
     var id: String { rawValue }
 }

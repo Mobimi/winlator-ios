@@ -264,7 +264,21 @@ cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173
 
 Nút **Web** trên thanh công cụ terminal liệt kê mọi cổng đang mở để mở lại. Tab **Shell → icon mạng** cũng có danh sách đó, kèm nút **Copy URL** và **Tắt cổng**.
 
-App forward sẵn 15 cổng: 3000, 3001, 4000, 4173, 4200, 5000, 5173, 5174, 5500, 8000, 8080, 8081, 8888, 9000 và 2222 (SSH). Cổng khác phải đổi về một trong các cổng này. App chỉ hiện các cổng nằm trong danh sách forward, nên cổng lạ trong `.ports` không làm rối danh sách.
+App forward sẵn 28 cổng: 3000–3002, 4000, 4173, 4174, 4200, 4321, 5000, 5001, 5173–5175, 5500, 7860, 8000–8002, 8080–8083, 8443, 8501, 8888, 9000, 9001, 9090 và 2222 (SSH). App chỉ hiện các cổng nằm trong danh sách forward, nên cổng lạ trong `.ports` không làm rối danh sách.
+
+### Server chỉ nghe `127.0.0.1` — vì sao bấm web không lên
+
+Đây là cái bẫy hay gặp nhất với script Python:
+
+```python
+app.run(port=5000)                 # Flask: chỉ nghe 127.0.0.1
+uvicorn main:app --port 8000       # mặc định 127.0.0.1
+```
+
+QEMU chuyển cổng vào **IP của máy ảo** (`10.0.2.15`), không vào loopback của máy ảo. Server bind `127.0.0.1` vì thế **không** vào được từ iOS dù cổng đã forward. Có hai cách:
+
+1. Sửa lệnh chạy: `app.run(host="0.0.0.0", port=5000)`, `uvicorn main:app --host 0.0.0.0`, `python3 -m http.server 8000 --bind 0.0.0.0`, `streamlit run app.py --server.address 0.0.0.0`.
+2. Không sửa code: tab **Shell → icon mạng** → dòng cổng có ghi *"Không trả lời HTTP — có thể server chỉ nghe 127.0.0.1"* → bấm **Chuyển qua proxy**. App chạy `devbox-webproxy.py` (python3 có sẵn) trong máy ảo: nghe một cổng đã forward rồi chuyển tiếp vào loopback. Cổng lạ (8501 Streamlit, 7860 Gradio, 5001…) cũng mở bằng proxy theo cách này, không phải đổi cổng.
 
 ### Muốn terminal "xịn" hơn (vim, htop, chia đôi màn hình)
 
