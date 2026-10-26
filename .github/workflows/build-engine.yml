@@ -109,11 +109,11 @@ jobs:
           cd engine/out
           zip -qry "$RUNNER_TEMP/devbox-engine.zip" Frameworks
           gh release view engine-v1 >/dev/null 2>&1 || \
-            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks. devbox-engine.zip = TCG + split-wx (needs JIT via StikDebug, no MAP_JIT entitlement). devbox-engine-tcg.zip = stable TCG copy for the IPA workflow."
-          if ! gh release view engine-v1 --json assets -q '.assets[].name' | grep -qx "devbox-engine-tcg.zip"; then
-            cp "$RUNNER_TEMP/devbox-engine.zip" "$RUNNER_TEMP/devbox-engine-tcg.zip"
-            gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine-tcg.zip" --clobber
-          fi
+            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks. devbox-engine.zip = TCG + split-wx (needs JIT via StikDebug, no MAP_JIT entitlement). devbox-engine-tcg.zip = same TCG build, refreshed by every engine run; the IPA workflow downloads this so the app never embeds a stale engine."
+          # Luôn refresh bản TCG: trước đây chỉ upload khi thiếu asset, nên IPA
+          # có thể nhúng engine cũ dù engine workflow vừa build xong.
+          cp "$RUNNER_TEMP/devbox-engine.zip" "$RUNNER_TEMP/devbox-engine-tcg.zip"
+          gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine-tcg.zip" --clobber
           gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine.zip" --clobber
-          ls -lh "$RUNNER_TEMP/devbox-engine.zip"
-          shasum -a 256 "$RUNNER_TEMP/devbox-engine.zip"
+          ls -lh "$RUNNER_TEMP/devbox-engine.zip" "$RUNNER_TEMP/devbox-engine-tcg.zip"
+          shasum -a 256 "$RUNNER_TEMP/devbox-engine.zip" "$RUNNER_TEMP/devbox-engine-tcg.zip"

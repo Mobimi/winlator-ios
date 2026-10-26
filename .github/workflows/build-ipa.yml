@@ -6,13 +6,25 @@ on:
     paths:
       - "app/**"
       - ".github/workflows/build-ipa.yml"
+  # Engine đổi → Build QEMU engine publish `devbox-engine-tcg.zip` → rebuild IPA
+  # để bản cài luôn có engine mới. Không thêm `engine/**` vào `push.paths`:
+  # làm vậy IPA sẽ build song song với engine và nhúng lại bản cũ.
+  workflow_run:
+    workflows: ["Build QEMU engine"]
+    types: [completed]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-ipa
+  cancel-in-progress: true
+
 jobs:
   build:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -51,15 +63,20 @@ jobs:
         run: |
           APP_PATH="app/.build/Build/Products/Release-iphoneos/Devbox.app"
           mkdir -p "$APP_PATH/Frameworks"
-          URL="https://github.com/Mobimi/winlator-ios/releases/download/engine-v1/devbox-engine.zip"
+          URL="https://github.com/Mobimi/winlator-ios/releases/download/engine-v1/devbox-engine-tcg.zip"
           curl -fL --retry 3 --retry-delay 2 -o "$RUNNER_TEMP/engine.zip" "$URL"
           unzip -q "$RUNNER_TEMP/engine.zip" -d "$RUNNER_TEMP/engine"
           cp -R "$RUNNER_TEMP/engine/Frameworks/." "$APP_PATH/Frameworks/"
-          test -f "$APP_PATH/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu" || {
+          BIN="$APP_PATH/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
+          test -f "$BIN" || {
             echo "qemu framework missing from engine zip"
             exit 1
           }
-          echo "engine frameworks embedded"
+          strings -a "$BIN" | grep -q "vm_remap for jit splitwx failed" || {
+            echo "engine zip is stale: no split-wx support"
+            exit 1
+          }
+          echo "engine frameworks embedded (TCG + split-wx)"
           du -sh "$APP_PATH/Frameworks"
           ls "$APP_PATH/Frameworks"
 
