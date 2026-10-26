@@ -5,11 +5,11 @@
 
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
-> **Trạng thái thật (2026-10-25):** engine QEMU đã build cho iOS và nhúng trong IPA, image Debian 13 đã phát hành, app đã có luồng tải image → boot → terminal. **Chưa test trên máy thật** — bước tiếp theo là cài IPA và chạy thử.
+> **Trạng thái thật (2026-10-26):** app đã cài và chạy trên iPhone 12 Pro Max / iOS 18.4.1 với StikDebug (JIT bật, `CS_DEBUGGED`). Bản 0.2.0 khởi động được QEMU, vào main loop, nhưng guest không thực thi lệnh nào (PC đứng yên, đĩa đọc 0 B). Bản 0.2.1 sửa lỗi **văng ngay khi bấm Khởi động** (app tự chạy thử mã máy trên vùng RWX không có quyền thực thi) và trả TCG về `MAP_JIT` như UTM — **đang chờ kết quả boot trên máy**.
 >
-> **Đã build xanh:** workflow **Build iOS IPA** run `40206934158` → `Devbox-unsigned.ipa` 7.29 MB (SHA256 `f17a26dc…`, phiên bản 0.2.0 build 2, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
+> **Đã build xanh:** workflow **Build iOS IPA** run `40261345497` → `Devbox-unsigned.ipa` 7.29 MB (SHA256 `a33d32b4…`, phiên bản 0.2.1 build 4, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
 >
-> **Mới ở bản 0.2.0:** console lấy chữ trực tiếp từ file `Devbox/logs/serial.log` (QEMU ghi ra file này ngay cả khi chưa có client nối cổng 4444), app tự kiểm tra JIT bằng cách ghi – đọc lại – **chạy thử** một hàm mã máy, và hỏi QMP để lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu của RAM. Tab **Thiết lập** có công tắc **Chế độ chắc chắn (1 CPU)**.
+> **Mới ở bản 0.2.1:** bỏ hoàn toàn đoạn chạy thử mã máy trong app (đó là nguyên nhân văng); JIT được kiểm tra bằng `mmap` vùng `MAP_JIT` 256 → 16 MB rồi `mprotect` RWX, kết quả vào `qemu.log` dạng `map_jit: …`; app **không ghi** vào trang JIT vì APRR làm thread mới bị kill khi ghi. Engine map code buffer TCG bằng `MAP_JIT` (giống UTM), log `devbox: jit buffer with MAP_JIT`. Console vẫn đọc trực tiếp `Devbox/logs/serial.log`, chẩn đoán sâu qua QMP lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Công tắc **Chế độ chắc chắn (1 CPU)** bật mặc định.
 >
 > **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 

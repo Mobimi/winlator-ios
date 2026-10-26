@@ -15,7 +15,7 @@
 | Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-Đã xong: run `40206934158` cho IPA 7.29 MB (SHA256 `f17a26dc…`, bản **0.2.0 (2)**), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, console đọc từ file `logs/serial.log` (QEMU ghi mọi byte guest in ra, kể cả khi chưa có client nối 4444), kiểm tra JIT bằng cách chạy thật một hàm mã máy (`jit-exec`), và chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Có công tắc **Chế độ chắc chắn (1 CPU)** để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
+Đã xong: run `40261345497` cho IPA 7.29 MB (SHA256 `a33d32b4…`, bản **0.2.1 (4)**), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, console đọc từ file `logs/serial.log` (QEMU ghi mọi byte guest in ra, kể cả khi chưa có client nối 4444), kiểm tra JIT bằng `mmap` vùng `MAP_JIT` (log `map_jit:`) — **không còn chạy thử mã máy**, vì chính đoạn đó làm app văng khi bấm Khởi động — và chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Engine TCG dùng lại `MAP_JIT` (log `devbox: jit buffer with MAP_JIT`). Có công tắc **Chế độ chắc chắn (1 CPU)**, mặc định bật, để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
 
 ---
 
