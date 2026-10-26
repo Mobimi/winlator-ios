@@ -41,6 +41,13 @@ final class GuestConsole: ObservableObject {
     /// Khi socket đã nối, output lấy trực tiếp từ socket. serial.log chỉ
     /// dùng để lấy phần boot trước khi nối và khi socket đứt.
     private var serialDisplay = true
+    /// Socket đã nhận byte nào trong lần nối hiện tại chưa. TCP có thể báo
+    /// `.ready` trước khi QEMU attach client vào chardev, nên phải xem byte
+    /// thật sự mới biết guest có đang đi qua socket hay không.
+    private var socketHeard = false
+    /// Đã tạm quay lại đọc serial.log vì socket im lặng. Khi socket có byte
+    /// đầu tiên thì tắt lại để không hiển thị trùng dòng.
+    private var serialFallback = false
     private var utf8Carry: [UInt8] = []
     @Published private(set) var currentLine = ""
 
@@ -168,9 +175,21 @@ final class GuestConsole: ObservableObject {
         guard let data = try? handle.read(upToCount: Int(wanted)), !data.isEmpty else { return false }
         serialOffset += UInt64(data.count)
         serialBytes += data.count
-        // Khi socket đang nối, output đi thẳng qua socket. Vẫn đọc file để
-        // giữ offset ở cuối, nhưng không hiển thị lần hai.
-        guard serialDisplay else { return true }
+        if !serialDisplay {
+            // Khi socket đang nối, output đi thẳng qua socket. Vẫn đọc file
+            // để giữ offset ở cuối, nhưng không hiển thị lần hai.
+            //
+            // Ngoại lệ: QEMU có thể chưa attach client vào chardev dù TCP đã
+            // `.ready`. Nếu socket im lặng >5 giây mà serial vẫn chảy thì
+            // guest đang chỉ ghi vào logfile — hiển thị serial để app không
+            // "chết" cho tới khi socket thật sự có dữ liệu.
+            let silent = !socketHeard
+                && Date().timeIntervalSince(connectedAt ?? Date()) > 5
+            guard silent else { return true }
+            serialFallback = true
+            serialDisplay = true
+            QEMUEngine.trace("console: socket im lặng >5s, tạm đọc serial.log")
+        }
         receivedBytes += data.count
         lastActivity = Date()
         if serialBytes == data.count {
@@ -248,6 +267,8 @@ final class GuestConsole: ObservableObject {
         lastError = nil
         shellReady = false
         serialDisplay = true
+        socketHeard = false
+        serialFallback = false
     }
 
     func disconnect() {
@@ -289,6 +310,8 @@ final class GuestConsole: ObservableObject {
             self.connectedAt = nil
             self.shellReady = false
             self.serialDisplay = true
+            self.socketHeard = false
+            self.serialFallback = false
         }
     }
 
@@ -352,6 +375,8 @@ final class GuestConsole: ObservableObject {
                     // lại ngay; nếu không app sẽ chờ prompt mãi dù bash đã sẵn
                     // sàng.
                     self.updateShellReady()
+                    self.socketHeard = false
+                    self.serialFallback = false
                     self.connected = true
                     self.connecting = false
                     self.connectingSince = nil
@@ -405,7 +430,16 @@ final class GuestConsole: ObservableObject {
                 let text = String(decoding: data, as: UTF8.self)
                 DispatchQueue.main.async {
                     guard self.generation == gen else { return }
-                    if self.socketBytes == 0 {
+                    if !self.socketHeard {
+                        self.socketHeard = true
+                        if self.serialFallback {
+                            // Đang hiển thị serial để chống im lặng; giờ
+                            // socket đã chạy. Không đọc nốt backlog để tránh
+                            // lặp dòng (phần chênh lệch chỉ là ~0.25 s).
+                            self.serialFallback = false
+                            self.serialDisplay = false
+                            QEMUEngine.trace("console: socket có dữ liệu, tắt đọc serial.log")
+                        }
                         let sample = text.prefix(160).replacingOccurrences(of: "\n", with: " ")
                         QEMUEngine.trace("console: socket trả byte đầu tiên · \"\(sample)\"")
                     }
