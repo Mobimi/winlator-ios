@@ -222,7 +222,7 @@ struct ShellView: View {
                     EmptyView()
                 }
             default:
-                strip(.gray, "moon.zzz.fill", "Linux chưa chạy", app.device.jit == .denied ? "Cần bật JIT bằng StikDebug" : "Bấm Khởi động để boot máy ảo") {
+                strip(.gray, "moon.zzz.fill", "Linux chưa chạy", !app.device.jitReady ? "Cần bật JIT bằng StikDebug" : "Bấm Khởi động để boot máy ảo") {
                     stripButton("Khởi động") { startEngine() }
                 }
             }
@@ -832,7 +832,7 @@ struct ShellView: View {
             }
             return "dev@devbox · \(model.cwd)"
         case .idle:
-            return app.device.jit == .denied ? "CẦN BẬT JIT BẰNG STIKDEBUG" : "LINUX CHƯA CHẠY"
+            return !app.device.jitReady ? "CẦN BẬT JIT BẰNG STIKDEBUG" : "LINUX CHƯA CHẠY"
         }
     }
 
@@ -897,7 +897,7 @@ struct ShellView: View {
 
     private func startEngine() {
         guard images.isInstalled, !engine.isRunning, engine.canStart,
-              app.device.jit != .denied, let image = images.image else { return }
+              app.device.jitReady, let image = images.image else { return }
         engine.start(image: image)
     }
 }

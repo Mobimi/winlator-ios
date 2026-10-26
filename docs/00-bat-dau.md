@@ -30,7 +30,7 @@ Mục tiêu bây giờ: **cài app lên iPhone, tải image Debian, boot đượ
 
 Tải trực tiếp: `https://github.com/Mobimi/winlator-ios/releases/download/ipa-v1/Devbox-unsigned.ipa`
 
-File khoảng 7.29 MB, SHA256 `a33d32b4…`, phiên bản **0.2.1 (4)** (bản build ngày 26/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi. Muốn chắc mình cài đúng bản: mở tab **Thiết lập**, dòng đầu của chẩn đoán phải ghi `== Devbox 0.2.1 (4) ==`.
+File khoảng 7 MB, phiên bản **0.2.3 (6)** (bản build ngày 26/10/2026). Release `ipa-v1` được cập nhật tự động mỗi lần code thay đổi. Muốn chắc mình cài đúng bản: mở tab **Thiết lập**, dòng đầu của chẩn đoán phải ghi `== Devbox 0.2.3 (6) ==`.
 
 **Cách khác (qua Artifacts):**
 
@@ -101,12 +101,18 @@ Mở **Devbox** → tab **Thiết lập**. Cần thấy:
 
 - Model `iPhone13,4` (iPhone 12 Pro Max)
 - RAM ~5800 MB
-- **JIT chưa bật** ❌ (đúng như vậy nếu bạn chưa chạy StikDebug)
+- **`CS_DEBUGGED` = TẮT** (đúng như vậy nếu bạn chưa chạy StikDebug)
 - Dòng `proc_csflags` — cờ thật của iOS
 
-Sau đó chạy StikDebug → **Enable JIT** cho Devbox, mở lại app: JIT phải chuyển thành **đã bật** ✅ và `proc_csflags` có bit `CS_DEBUGGED`.
+Sau đó chạy StikDebug → **Enable JIT** cho Devbox, mở lại app: `CS_DEBUGGED` phải là **BẬT**.
 
-> App đọc đúng `CS_DEBUGGED` nên **không thể báo xanh khi chưa có debugger attach**.
+**Đừng nhìn `P_TRACED`.** StikDebug attach vào tiến trình, bật JIT rồi **detach**; `P_TRACED` chỉ CÓ khi debugger còn attach, nên sau khi StikDebug xong nó thường ghi `KHÔNG (bình thường: StikDebug đã detach, JIT vẫn bật nhờ CS_DEBUGGED)`. Cờ quyết định là `CS_DEBUGGED`, và app kiểm tra đúng cờ này.
+
+`proc_csflags` trên máy thật thường là `0x32003005`, có bit `0x10000000` = `CS_DEBUGGED`.
+
+> Engine dùng **TCG + split-wx**: QEMU cấp một vùng RW để ghi mã, rồi `mach_vm_remap` tạo alias RX của đúng các trang đó và `mprotect(RX)`. Cách này chạy với `CS_DEBUGGED` và **không cần** entitlement `dynamic-codesigning`. Vì vậy log có thể ghi `MAP_JIT … errno 22` — bình thường, không phải JIT tắt.
+
+> App đọc `CS_DEBUGGED` nên **không thể báo xanh khi chưa có debugger attach lần nào**.
 
 ### Giữ nền (để web server không chết khi rời app)
 
@@ -169,7 +175,7 @@ python3 -m venv .venv && source .venv/bin/activate && pip install requests
 
 > Nếu quá 90 giây vẫn ở trạng thái khởi động, dải trên cùng chuyển đỏ kèm **bước cuối** và trạng thái JIT. Bấm **Sao chép log QEMU** rồi dán vào chat — đừng đoán.
 
-> Muốn biết lỗi nằm ở thư viện hay ở JIT mà không cần boot: tab **Thiết lập** → mục **Engine** → **Kiểm tra engine (không boot)**. Kết quả cho biết `dlopen` OK hay lỗi, `mmap RWX` (bộ nhớ thực thi cho TCG) có được cấp hay bị chặn kèm errno.
+> Muốn biết lỗi nằm ở thư viện hay ở JIT mà không cần boot: tab **Thiết lập** → mục **Engine** → **Kiểm tra engine (không boot)**. Kết quả cho biết `dlopen` OK hay lỗi, `split-wx` (vùng RW + alias RX cho TCG) có tạo được hay bị chặn kèm errno, và `MAP_JIT` dự phòng có chạy không.
 
 > Nếu bấm **Dừng Linux**: QEMU không boot lại được trong cùng tiến trình. Vuốt Devbox khỏi đa nhiệm rồi mở lại, bật lại JIT.
 
@@ -231,17 +237,20 @@ Không cần chụp ảnh — mọi thứ nằm trong file:
 | Actions `xcodegen: command not found` | Bước brew lỗi | Chạy lại workflow |
 | App hết hạn sau 7 ngày | Apple ID miễn phí | Cắm PC, chạy lại Sideloadly |
 | Chỉ cài được 3 app | Giới hạn Apple ID | Xoá bớt app sideload khác |
-| JIT bật xong vẫn đỏ | StikDebug attach sai app / app đang chạy trước khi attach | Làm đúng thứ tự: vuốt Devbox khỏi đa nhiệm → mở StikDebug → **Enable JIT** (StikDebug tự mở Devbox) → trong Devbox bấm **Kiểm tra lại thiết bị**. App cũng tự đọc lại mỗi 4 giây |
-| Vẫn đỏ, `P_TRACED = KHÔNG` | Debugger không attach được vào tiến trình (thiếu `get-task-allow`, pairing sai, Developer Mode tắt) | Cài lại bằng **Sideloadly** (bản sideload có `get-task-allow`), bật Developer Mode, tạo lại pairing file, thử lại |
-| Vẫn đỏ, `P_TRACED = CÓ` | Debugger có attach nhưng cờ `CS_DEBUGGED` chưa bật | Gửi mình output `diag`; đây là dữ liệu để xử lý tiếp, không đoán mò |
+| JIT bật xong vẫn đỏ | StikDebug attach sai app / app đang chạy trước khi attach | Làm đúng thứ tự: vuốt Devbox khỏi đa nhiệm → mở StikDebug → **Enable JIT** (StikDebug tự mở Devbox) → trong Devbox bấm **Kiểm tra lại thiết bị**. App cũng tự đọc lại mỗi 4 giây. Nhìn `CS_DEBUGGED`, đừng nhìn `P_TRACED` |
+| `CS_DEBUGGED = TẮT`, `P_TRACED = KHÔNG` | Debugger chưa từng attach được vào tiến trình (thiếu `get-task-allow`, pairing sai, Developer Mode tắt) | Cài lại bằng **Sideloadly** (bản sideload có `get-task-allow`), bật Developer Mode, tạo lại pairing file, thử lại |
+| `CS_DEBUGGED = TẮT`, `P_TRACED = CÓ` | Debugger còn attach nhưng JIT chưa được bật cho tiến trình | Bấm **Enable JIT** lại trong StikDebug; nếu vẫn vậy, gửi mình output `diag` và `qemu.log` |
+| `P_TRACED = KHÔNG` nhưng `CS_DEBUGGED = BẬT` | Bình thường: StikDebug detach sau khi bật JIT | Không làm gì. Đây là trạng thái đúng để boot |
+| Log có `MAP_JIT … errno 22` | App sideload không có entitlement `dynamic-codesigning`; `MAP_JIT` bị iOS từ chối | Bình thường. Engine không dùng `MAP_JIT` mà dùng **split-wx** (`mach_vm_remap` + `mprotect RX`). Chỉ cần `CS_DEBUGGED = BẬT` |
+| Log có `split-wx bị chặn` | JIT chưa có hiệu lực, hoặc iOS chặn `mprotect(RX)` | Bật lại JIT bằng StikDebug (Bước 4), thoát hẳn app rồi mở lại; gửi dòng `Codegen:` trong `diag` |
 | `proc_csflags = không đọc được` | iOS 18+ chặn `sysctl.proc_csflags` với app thường | App tự chuyển sang `csops(CS_OPS_STATUS)`. Nếu cả hai lỗi, `diag` in errno của từng cách |
 | Chạy nền báo `THIẾU` | Bản IPA cũ chưa có `UIBackgroundModes` | Tải IPA mới từ Actions, cài lại |
 | Chạy nền tắt sau cuộc gọi | Audio bị hệ thống ngắt | App tự bật lại; nếu không, mở Devbox rồi bật công tắc lại |
 | Bấm mở dự án, dải đỏ báo `Thiếu engine QEMU…` | IPA tải từ run cũ (trước khi nhúng engine) | Tải lại IPA ở run **Build iOS IPA** mới nhất, cài lại |
 | Dải đỏ `QEMU gọi exit() khi khởi động…` | QEMU tự thoát trong lúc init (thiếu bộ nhớ exec, tham số, hoặc framework) | Tab **Thiết lập** → **Kiểm tra engine (không boot)**, rồi gửi file `logs/qemu.log` trong app Files. Log ghi từng bước `dlopen` → `qemu_init` → `main loop` |
 | Dải đỏ `QEMU chưa vào main loop sau 90 giây…` | `qemu_init` treo hoặc thread QEMU chết sớm | Xem `logs/qemu.log`; dòng `[t+…] stage:` cuối cùng cho biết treo ở đâu |
-| Dải đỏ `iOS không cấp bộ nhớ thực thi cho QEMU…` | `mmap RWX` bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi kết quả |
-| Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox |
+| Dải đỏ `Không tạo được vùng code TCG…` | `split-wx` thất bại và `MAP_JIT` cũng bị chặn — JIT chưa thực sự có hiệu lực | Bật lại JIT bằng StikDebug (Bước 4). Nếu vẫn lỗi, chạy **Kiểm tra engine** và gửi dòng `split-wx` / `MAP_JIT` |
+| Log QEMU có `tcg` / `mprotect` / `MAP_JIT` | JIT chưa bật hoặc StikDebug attach sai app | Vuốt Devbox khỏi đa nhiệm → StikDebug → **Enable JIT** → StikDebug tự mở Devbox. Kiểm tra `CS_DEBUGGED = BẬT` |
 | `serial.log` trống hoàn toàn, `diag` báo `guest: … pc=0x40000000` không đổi | CPU khách không chạy được instruction đầu tiên (JIT/vCPU) | Bật **Chế độ chắc chắn (1 CPU)** ở tab Thiết lập, thoát hẳn app, mở lại, boot lại, rồi gửi `qemu.log` + `serial.log` |
 | `serial.log` có chữ nhưng app không hiện | App đọc file chậm / iOS chặn Files | Bấm **Nối lại** ở dải trạng thái; gửi `serial.log` |
 | Log QEMU có `failed to find romfile "efi-virtio.rom"` | IPA cũ: engine build không kèm blobs nhưng card mạng vẫn đòi ROM PXE | Cài IPA mới (từ `a724b2a7…` trở đi). Bản mới truyền `romfile=` rỗng nên bỏ ROM, không cần PXE |

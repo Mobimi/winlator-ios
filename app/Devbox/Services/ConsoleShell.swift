@@ -37,7 +37,7 @@ final class ConsoleShell: ObservableObject {
     func boot() {
         lines = []
         append("Devbox console — chạy thật trên máy, không giả lập.", .info)
-        append("Engine Linux: CHƯA NỐI. Các lệnh python/npm sẽ không chạy ở bản này.", .error)
+        append("Engine Linux: cần image Debian. Cài ở tab Thiết lập rồi mở lại dự án.", .info)
         append("Gõ “help” để xem lệnh chẩn đoán thật.", .info)
         append("", .output)
     }
@@ -69,8 +69,8 @@ final class ConsoleShell: ObservableObject {
                   engine           trạng thái engine/image
                   clear
 
-                Lệnh Linux (python, pip, node, npm, git…): CHƯA CÓ.
-                Chúng cần QEMU + image Debian, tức mốc M1/M2.
+                Lệnh Linux (python, pip, node, npm, git…): cần cài image Debian
+                và boot QEMU. Khi image đã cài, dự án tự mở console guest.
                 App sẽ không in kết quả giả cho các lệnh này.
                 """,
                 .output
@@ -111,7 +111,7 @@ final class ConsoleShell: ObservableObject {
             return
 
         default:
-            append("\(head): lệnh Linux chưa chạy được — chưa nối engine QEMU (M1).", .error)
+            append("\(head): lệnh Linux chưa chạy được — cài image Debian trước.", .error)
             append("App không in kết quả giả. Gõ “help” để xem lệnh thật.", .info)
         }
 
@@ -122,28 +122,23 @@ final class ConsoleShell: ObservableObject {
     private func printJIT() {
         let device = DeviceProbe.snapshot()
 
+        append("engine: \(QEMUEngine.engineMode)", .output)
         append("pid \(device.pid) · ppid \(device.parentPID)", .output)
         if let flags = device.csFlags {
             append(String(format: "proc_csflags = 0x%08X", flags) + " (đọc bằng \(device.csSource))", .output)
             append("CS_DEBUGGED (0x10000000) = \(device.debugged ? "BẬT" : "TẮT")", .output)
         } else {
-            append("Không đọc được cờ JIT: csops errno \(device.csopsErrno), sysctl errno \(device.sysctlErrno).", .error)
+            append("Không đọc được cờ: csops errno \(device.csopsErrno), sysctl errno \(device.sysctlErrno).", .error)
             append("App đã thử csops trước, sysctl sau. iOS 18+ thường chặn sysctl.proc_csflags.", .info)
         }
 
-        append("P_TRACED = \(device.traced ? "CÓ (debugger đang trace)" : "KHÔNG")", device.traced ? .success : .output)
+        append("P_TRACED = \(device.traceNote)", device.traced ? .success : .output)
 
-        switch device.jit {
-        case .granted:
-            append("→ JIT: đã bật (debugger đang attach).", .success)
-        case .denied:
-            append("→ JIT: CHƯA bật. Mở StikDebug → Enable JIT cho Devbox.", .error)
-        case .unknown:
-            append("→ JIT: không xác định.", .error)
-        }
-
-        if !device.jit.isGranted {
-            append("Nếu StikDebug báo đã bật: force quit Devbox, rồi Enable JIT lại (StikDebug sẽ tự mở app). App tự đọc lại mỗi 4 giây.", .info)
+        if device.debugged {
+            append("→ JIT đã bật (CS_DEBUGGED). StikDebug detach nên P_TRACED=KHÔNG là bình thường.", .success)
+            append("→ Engine TCG dùng split-wx (RW + RX alias), không dùng MAP_JIT.", .info)
+        } else {
+            append("→ Chưa có CS_DEBUGGED. Mở StikDebug → Enable JIT cho Devbox rồi thử lại.", .error)
         }
     }
 
@@ -277,7 +272,8 @@ final class ConsoleShell: ObservableObject {
     }
 
     private func printEngine() {
-        append("QEMU: chưa nhúng vào app (mốc M1).", .error)
+        let engine = QEMUEngine.shared
+        append("QEMU: \(engine.state.text) · \(QEMUEngine.engineMode)", .output)
         let images = documents.appendingPathComponent("Devbox/images", isDirectory: true)
         let image = images.appendingPathComponent("devbox-rootfs.ext4")
         if let attributes = try? FileManager.default.attributesOfItem(atPath: image.path),
@@ -287,7 +283,7 @@ final class ConsoleShell: ObservableObject {
             append("Image: chưa cài", .output)
         }
         append("Giữ nền: \(BackgroundKeeper.shared.stateText)", BackgroundKeeper.shared.isAudioRunning ? .success : .output)
-        append("→ Chưa boot được Linux. Không có lệnh nào giả ở đây.", .info)
+        append("→ Boot Linux cần image Debian và JIT (StikDebug). Không có lệnh nào giả ở đây.", .info)
     }
 
     private func resolve(_ path: String?) -> URL? {

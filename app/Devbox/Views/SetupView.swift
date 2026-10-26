@@ -32,9 +32,9 @@ struct SetupView: View {
                             .foregroundStyle(jitColor)
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(app.device.jit.title)
+                            Text(QEMUEngine.engineMode)
                                 .font(.headline)
-                            Text(app.device.jit.detail)
+                            Text("Cần StikDebug bật JIT mỗi lần mở app. TCG dùng split-wx (RW + RX alias) nên không cần entitlement dynamic-codesigning và không dùng MAP_JIT.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -49,17 +49,15 @@ struct SetupView: View {
                     }
 
                     LabeledContent("CS_DEBUGGED", value: app.device.debugged ? "BẬT (0x10000000)" : "TẮT")
-                    LabeledContent("P_TRACED", value: app.device.traced ? "có debugger trace" : "không")
+                    LabeledContent("P_TRACED", value: app.device.traceNote)
                     LabeledContent("PID · PPID", value: "\(app.device.pid) · \(app.device.parentPID)")
-
-                    if app.device.debugged {
-                        Label("App đang có debugger attach", systemImage: "ladybug")
-                            .font(.caption)
-                    }
+                    LabeledContent("Engine", value: QEMUEngine.engineMode)
+                    LabeledContent("Codegen", value: engine.execNote.isEmpty ? "chưa thử" : engine.execNote)
+                        .font(.system(.caption2, design: .monospaced))
                 } header: {
-                    Text("JIT")
+                    Text("JIT (bắt buộc cho engine TCG)")
                 } footer: {
-                    Text("App đọc cờ bằng csops trước, sysctl sau. iOS 18+ hay chặn sysctl.proc_csflags nên có thể ra “không xác định” dù JIT đang bật. App tự đọc lại mỗi 4 giây. Nếu StikDebug báo đã bật mà vẫn đỏ: xem P_TRACED — “không” nghĩa là debugger không còn attach vào tiến trình này. JIT không cần entitlement riêng.")
+                    Text("CS_DEBUGGED là dấu hiệu JIT thật sự. StikDebug attach, bật JIT rồi detach, nên P_TRACED thường quay về KHÔNG — đó là bình thường, không phải JIT tắt. MAP_JIT errno 22 cũng bình thường với app sideload: engine không dùng MAP_JIT mà dùng split-wx, đúng cách UTM chạy trên iPhone không có entitlement JIT.")
                 }
 
                 Section {
@@ -92,12 +90,12 @@ struct SetupView: View {
                 Section {
                     LabeledContent("Entitlements", value: "Không dùng")
                     LabeledContent("Quyền đặc biệt", value: "Chỉ Info.plist")
-                    LabeledContent("JIT", value: "Debugger attach (StikDebug)")
+                    LabeledContent("JIT", value: "Bắt buộc (StikDebug)")
                     LabeledContent("Ký app", value: "Sideloadly / SideStore · 7 ngày")
                 } header: {
                     Text("Chữ ký & quyền")
                 } footer: {
-                    Text("App không có file .entitlements riêng. Thêm entitlement ngoài profile free sẽ làm app cài xong bị crash. Chạy nền dùng UIBackgroundModes (Info.plist), JIT dùng CS_DEBUGGED, nên cả hai đều không cần entitlement.")
+                    Text("App không có file .entitlements riêng, nên cài bằng Sideloadly với Apple ID free. Chạy nền dùng UIBackgroundModes (Info.plist). Engine TCG cần JIT: bật bằng StikDebug sau mỗi lần mở app. Trong app, engine dùng split-wx (mprotect RX trên alias của vùng RW) — cách UTM đang dùng cho app sideload, không cần quyền dynamic-codesigning.")
                 }
 
                 Section {
@@ -210,7 +208,7 @@ struct SetupView: View {
                 } header: {
                     Text("Engine")
                 } footer: {
-                    Text("QEMU aarch64 chạy trong tiến trình app, tăng tốc bằng JIT. Boot lần đầu chậm (30–60 giây) vì là TCG. “Kiểm tra engine” chỉ nạp thư viện và thử cấp phát bộ nhớ exec, không khởi động máy ảo — dùng để biết lỗi nằm ở thư viện hay ở JIT.\n\nLog nằm trong app Files: Trên iPhone của tôi → Devbox → logs → qemu.log (lần boot trước là qemu-previous.log, chẩn đoán là diagnostics.txt). Không cần copy tay: mở Files để xem, hoặc bấm “Chia sẻ file log” để gửi qua AirDrop/Telegram.")
+                    Text("QEMU aarch64 chạy trong tiến trình app bằng TCG + split-wx. Boot lần đầu có thể 2–5 phút; sau đó mỗi lệnh chạy chậm hơn máy thật khoảng 2–5 lần (nhanh hơn nhiều so với interpreter).\n\nLog nằm trong app Files: Trên iPhone của tôi → Devbox → logs → qemu.log (lần boot trước là qemu-previous.log, chẩn đoán là diagnostics.txt). Không cần copy tay: mở Files để xem, hoặc bấm “Chia sẻ file log” để gửi qua AirDrop/Telegram.")
                 }
 
                 Section {
@@ -240,7 +238,7 @@ struct SetupView: View {
                     Label("Giữ nền tốn pin và làm máy ấm", systemImage: "battery.25")
                     Label("Không chạy được app có giao diện đồ hoạ", systemImage: "display")
                     Label("Không thay thế được laptop cho build nặng", systemImage: "laptopcomputer")
-                    Label("Cần bật lại JIT mỗi lần mở app (StikDebug)", systemImage: "arrow.clockwise")
+                    Label("Chậm hơn máy thật 2–5 lần (TCG)", systemImage: "tortoise")
                 } header: {
                     Text("Giới hạn đã biết")
                 } footer: {
@@ -318,16 +316,16 @@ struct SetupView: View {
     private var jitIcon: String {
         switch app.device.jit {
         case .granted: return "checkmark.seal.fill"
-        case .denied: return "xmark.seal.fill"
-        case .unknown: return "questionmark.seal.fill"
+        case .denied: return "exclamationmark.triangle.fill"
+        case .unknown: return "questionmark.circle.fill"
         }
     }
 
     private var jitColor: Color {
         switch app.device.jit {
         case .granted: return .green
-        case .denied: return .red
-        case .unknown: return .orange
+        case .denied: return .orange
+        case .unknown: return .yellow
         }
     }
 }

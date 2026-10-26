@@ -150,7 +150,7 @@ struct TerminalView: View {
         }
         switch engine.state {
         case .idle, .stopped:
-            if app.device.jit == .denied {
+            if !app.device.jitReady {
                 return "LINUX DỪNG · bật JIT bằng StikDebug"
             }
             return engine.hasBooted ? "LINUX ĐÃ DỪNG · mở lại app để boot lại" : "LINUX DỪNG"
@@ -305,7 +305,7 @@ struct TerminalView: View {
 
     private func startEngineIfNeeded() {
         guard guestMode, !engine.isRunning, engine.canStart,
-              app.device.jit != .denied, let image = images.image else { return }
+              app.device.jitReady, let image = images.image else { return }
         engine.start(image: image)
     }
 

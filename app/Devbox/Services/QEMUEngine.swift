@@ -73,6 +73,9 @@ final class QEMUEngine: ObservableObject {
     private static let timeBase = ProcessInfo.processInfo.systemUptime
     private static let devboxMapJit: Int32 = 0x0800
 
+    static let engineMode = "TCG + split-wx (cần JIT)"
+    static let engineNeedsJIT = true
+
     private init() {}
 
     var isRunning: Bool {
@@ -111,23 +114,50 @@ final class QEMUEngine: ObservableObject {
         prepareLog()
         Self.trace("=== start ===")
         errno = 0
-        let jitMap = Self.mapJITProbe()
-        execNote = jitMap.note
-        Self.trace("map jit: \(jitMap.note)")
-        guard jitMap.ok else {
-            Self.trace("map jit probe failed: \(jitMap.note)")
+
+        let jit = DeviceProbe.jitState()
+        let debugged = DeviceProbe.isDebugged()
+        Self.trace("engine mode: \(Self.engineMode) needsJIT=\(Self.engineNeedsJIT) jit=\(jit.title) debugged=\(debugged)")
+
+        if Self.engineNeedsJIT {
+            if case .denied = jit {
+                Self.trace("jit denied: CS_DEBUGGED chưa bật")
+                refreshLog()
+                state = .failed("Chưa bật JIT (CS_DEBUGGED). Mở StikDebug → Enable JIT cho Devbox, rồi mở lại app.")
+                saveDiagnostics()
+                return
+            }
+        }
+
+        // UTM's path for sideloaded apps: RW anonymous mapping + RX alias via
+        // mach_vm_remap + mprotect(RX). No MAP_JIT, no dynamic-codesigning.
+        let split = Self.splitWXProbe()
+        let mapJIT = split.ok ? nil : Self.mapJITProbe()
+        let tbSize: Int
+        let splitWX: Bool
+        if split.ok {
+            tbSize = split.tbSize
+            splitWX = true
+            execNote = split.note
+            Self.trace("codegen: \(split.note)")
+        } else if let mapJIT, mapJIT.ok {
+            tbSize = mapJIT.tbSize
+            splitWX = false
+            execNote = "\(split.note) · \(mapJIT.note)"
+            Self.trace("codegen: MAP_JIT fallback · \(mapJIT.note)")
+        } else {
+            let fallback = mapJIT?.note ?? "MAP_JIT không thử"
+            execNote = "\(split.note) · \(fallback)"
+            Self.trace("codegen failed: \(execNote)")
             refreshLog()
-            state = .failed("iOS không cấp vùng JIT (MAP_JIT) cho QEMU: \(jitMap.note). Bật lại JIT bằng StikDebug rồi thử lại.")
+            state = .failed("Không tạo được vùng code TCG. \(split.note). \(fallback). Kiểm tra lại JIT (StikDebug) rồi thử lại.")
             saveDiagnostics()
             return
         }
-        let rwx = Self.probeExecMemory()
-        execNote = "\(jitMap.note) · \(rwx.note)"
-        Self.trace("exec memory: \(rwx.note)")
 
         let availableMemory = DeviceProbe.availableMemoryMB()
         let memory = Self.budgetMemory(requested: memoryMB, available: availableMemory)
-        let arguments = buildArguments(image: image, share: share, cpuCount: cpuCount, memoryMB: memory, tbSize: jitMap.tbSize)
+        let arguments = buildArguments(image: image, share: share, cpuCount: cpuCount, memoryMB: memory, tbSize: tbSize, splitWX: splitWX)
         lastArguments = arguments
         hasBooted = true
         state = .starting
@@ -199,6 +229,7 @@ final class QEMUEngine: ObservableObject {
     func preflight() -> String {
         var lines: [String] = []
         lines.append("== Kiểm tra engine ==")
+        lines.append("Engine mode: \(Self.engineMode) · needsJIT=\(Self.engineNeedsJIT)")
         lines.append("App: \(Bundle.main.bundlePath)")
         guard let frameworks = Bundle.main.privateFrameworksURL else {
             lines.append("Frameworks: KHÔNG CÓ")
@@ -235,7 +266,9 @@ final class QEMUEngine: ObservableObject {
             lines.append("  \(message)")
         }
 
-        lines.append("JIT: \(DeviceProbe.jitState().title) · CS_DEBUGGED=\(DeviceProbe.isDebugged())")
+        let debugged = DeviceProbe.isDebugged()
+        lines.append("JIT (bắt buộc): \(DeviceProbe.jitState().title) · CS_DEBUGGED=\(debugged)")
+        lines.append("P_TRACED: \(DeviceProbe.traceInfo().note) · chỉ CÓ khi debugger còn attach")
         lines.append("RAM còn dùng được: \(DeviceProbe.availableMemoryMB()) MB · app đang dùng \(DeviceProbe.footprintMB()) MB")
         lines.append(contentsOf: Self.codeMemoryTest())
         lines.append("Engine state: \(state.text)")
@@ -252,7 +285,7 @@ final class QEMUEngine: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func buildArguments(image: InstalledImage, share: URL, cpuCount: Int, memoryMB: Int, tbSize: Int) -> [String] {
+    private func buildArguments(image: InstalledImage, share: URL, cpuCount: Int, memoryMB: Int, tbSize: Int, splitWX: Bool) -> [String] {
         let stored = UserDefaults.standard.object(forKey: "devbox.singleCPU") as? Bool
         let single = stored ?? true
         let cpus = single ? 1 : cpuCount
@@ -261,7 +294,8 @@ final class QEMUEngine: ObservableObject {
         args += ["-cpu", "max"]
         args += ["-smp", "\(cpus)"]
         args += ["-m", "\(memoryMB)"]
-        args += ["-accel", "tcg,thread=\(single ? "single" : "multi"),tb-size=\(tbSize)"]
+        let accel = "tcg,thread=\(single ? "single" : "multi"),tb-size=\(tbSize)" + (splitWX ? ",split-wx=on" : "")
+        args += ["-accel", accel]
         args += ["-rtc", "base=utc,clock=host"]
         args += ["-kernel", image.kernel.path]
         args += ["-initrd", image.initrd.path]
@@ -632,6 +666,67 @@ final class QEMUEngine: ObservableObject {
         return ExecProbe(execOK: false, tbSize: 0, note: "mmap RWX bị chặn: \(failures.joined(separator: ", "))")
     }
 
+    // QEMU TCG on iOS without dynamic-codesigning: one RW mapping for writes and a
+    // second RX alias of the same pages for execution (tcg/region.c split-wx).
+    private static func splitWXProbe() -> ExecProbe {
+        var failures: [String] = []
+        for megabytes in [256, 192, 128, 64, 32, 16] {
+            let bytes = megabytes << 20
+            let rwMap = mapMemory(bytes, protection: PROT_READ | PROT_WRITE)
+            guard let rw = rwMap.pointer else {
+                failures.append("\(megabytes) MB RW errno \(rwMap.code)")
+                continue
+            }
+
+            var rxAddress: mach_vm_address_t = 0
+            var current: vm_prot_t = 0
+            var maximum: vm_prot_t = 0
+            let remap = mach_vm_remap(
+                mach_task_self_,
+                &rxAddress,
+                mach_vm_size_t(bytes),
+                0,
+                VM_FLAGS_ANYWHERE,
+                mach_task_self_,
+                mach_vm_address_t(UInt(bitPattern: rw)),
+                0,
+                &current,
+                &maximum,
+                vm_inherit_t(VM_INHERIT_NONE)
+            )
+            guard remap == KERN_SUCCESS, let rx = UnsafeMutableRawPointer(bitPattern: UInt(rxAddress)) else {
+                munmap(rw, bytes)
+                failures.append("\(megabytes) MB remap kr=\(remap)")
+                continue
+            }
+
+            errno = 0
+            let protected = mprotect(rx, bytes, PROT_READ | PROT_EXEC)
+            let protectErrno = errno
+            if protected != 0 {
+                munmap(rx, bytes)
+                munmap(rw, bytes)
+                failures.append("\(megabytes) MB mprotect RX errno \(protectErrno)")
+                continue
+            }
+
+            let write = writeCodeTest(rw)
+            let mirrored = rx.load(as: UInt32.self) == 0x52800540
+            munmap(rx, bytes)
+            munmap(rw, bytes)
+
+            let mirror = mirrored ? "alias RX thấy mã vừa ghi" : "alias RX KHÔNG thấy mã vừa ghi"
+            let tail = failures.isEmpty ? "" : " · trước đó: \(failures.joined(separator: ", "))"
+            let note = "split-wx \(megabytes) MB OK · tb-size=\(megabytes) · \(write) · \(mirror)\(tail)"
+            trace("split-wx: \(note)")
+            return ExecProbe(execOK: mirrored, tbSize: megabytes, note: note)
+        }
+
+        let text = "split-wx bị chặn: \(failures.joined(separator: ", "))"
+        trace("split-wx: \(text)")
+        return ExecProbe(execOK: false, tbSize: 0, note: text)
+    }
+
     static func mapJITProbe() -> (ok: Bool, tbSize: Int, note: String) {
         var failures: [String] = []
         for megabytes in [256, 128, 64, 32, 16] {
@@ -685,46 +780,9 @@ final class QEMUEngine: ObservableObject {
 
     private static func codeMemoryTest() -> [String] {
         var lines: [String] = []
-
-        let small = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
-        if let pointer = small.pointer {
-            lines.append("mmap 16 MB RWX: OK")
-            lines.append("ghi thử mã máy: \(writeCodeTest(pointer))")
-            munmap(pointer, 16 << 20)
-        } else {
-            lines.append("mmap 16 MB RWX: LỖI errno \(small.code) (\(String(cString: strerror(small.code))))")
-        }
-
-        let big = mapMemory(256 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
-        if let pointer = big.pointer {
-            lines.append("mmap 256 MB RWX: OK (đủ cho tb-size=256)")
-            munmap(pointer, 256 << 20)
-        } else {
-            lines.append("mmap 256 MB RWX: LỖI errno \(big.code) (\(String(cString: strerror(big.code))))")
-        }
-
-        let reclaim = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE)
-        if let pointer = reclaim.pointer {
-            errno = 0
-            if mprotect(pointer, 16 << 20, PROT_READ | PROT_EXEC) == 0 {
-                lines.append("mprotect RW → RX: OK")
-            } else {
-                lines.append("mprotect RW → RX: LỖI errno \(errno) (\(String(cString: strerror(errno))))")
-            }
-            munmap(pointer, 16 << 20)
-        } else {
-            lines.append("mmap 16 MB RW: LỖI errno \(reclaim.code)")
-        }
-
-        let reserved = mapMemory(32 << 20, protection: PROT_NONE, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
-        if let pointer = reserved.pointer {
-            lines.append("mmap PROT_NONE + MAP_JIT: OK")
-            munmap(pointer, 32 << 20)
-        } else {
-            lines.append("mmap PROT_NONE + MAP_JIT: LỖI errno \(reserved.code) — QEMU bản cũ dùng cờ này nên bị chặn")
-        }
-
-        lines.append("Chọn: \(probeExecMemory().note)")
+        lines.append("split-wx (engine dùng): \(splitWXProbe().note)")
+        lines.append("MAP_JIT (dự phòng): \(mapJITProbe().note)")
+        lines.append("RWX trực tiếp (không dùng): \(probeExecMemory().note)")
         return lines
     }
 

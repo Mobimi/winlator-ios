@@ -8,6 +8,9 @@ private func devbox_csops(_ pid: pid_t, _ ops: UInt32, _ useraddr: UnsafeMutable
 @_silgen_name("os_proc_available_memory")
 private func devbox_os_proc_available_memory() -> UInt
 
+@_silgen_name("proc_pidinfo")
+private func devbox_proc_pidinfo(_ pid: Int32, _ flavor: Int32, _ arg: UInt64, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
+
 enum JITState {
     case granted
     case denied
@@ -29,11 +32,11 @@ enum JITState {
     var detail: String {
         switch self {
         case .granted:
-            return "Debugger đã attach (CS_DEBUGGED). QEMU dùng được JIT."
+            return "CS_DEBUGGED đã bật. Engine TCG dùng split-wx, không cần MAP_JIT."
         case .denied:
-            return "Chưa có debugger attach. Bật bằng StikDebug, rồi mở lại Devbox."
+            return "Chưa có CS_DEBUGGED. Bật bằng StikDebug, rồi mở lại Devbox."
         case .unknown:
-            return "iOS này không cho app đọc cờ JIT. Xem errno bên dưới để biết bị chặn ở đâu."
+            return "iOS không cho app đọc cờ JIT. App vẫn thử split-wx khi khởi động."
         }
     }
 }
@@ -57,19 +60,38 @@ struct DeviceSnapshot {
     var csopsErrno: Int32
     var sysctlErrno: Int32
     var traced: Bool
+    var traceNote: String
     var parentPID: Int32
     var pid: Int32
+
+    var jitReady: Bool {
+        guard QEMUEngine.engineNeedsJIT else { return true }
+        if case .denied = jit { return false }
+        return true
+    }
 }
 
 enum DeviceProbe {
     static func snapshot() -> DeviceSnapshot {
         let trace = traceInfo()
         let probe = csFlagsProbe()
+        let debugged = (probe.flags.map { ($0 & CS_DEBUGGED) != 0 }) ?? false
         let jit: JITState
         if let flags = probe.flags {
             jit = (flags & CS_DEBUGGED) != 0 ? .granted : .denied
         } else {
             jit = .unknown
+        }
+
+        let traceNote: String
+        if !trace.readable {
+            traceNote = trace.note
+        } else if trace.traced {
+            traceNote = "CÓ (debugger đang attach)"
+        } else if debugged {
+            traceNote = "KHÔNG (bình thường: StikDebug đã detach, JIT vẫn bật nhờ CS_DEBUGGED)"
+        } else {
+            traceNote = "KHÔNG"
         }
 
         return DeviceSnapshot(
@@ -78,12 +100,13 @@ enum DeviceProbe {
             physicalMemoryMB: Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
             cores: ProcessInfo.processInfo.processorCount,
             jit: jit,
-            debugged: (probe.flags.map { ($0 & CS_DEBUGGED) != 0 }) ?? false,
+            debugged: debugged,
             csFlags: probe.flags,
             csSource: probe.source,
             csopsErrno: probe.csopsErrno,
             sysctlErrno: probe.sysctlErrno,
             traced: trace.traced,
+            traceNote: traceNote,
             parentPID: trace.parent,
             pid: getpid()
         )
@@ -119,13 +142,32 @@ enum DeviceProbe {
         return (flags & CS_DEBUGGED) != 0
     }
 
-    static func traceInfo() -> (traced: Bool, parent: Int32) {
+    static func traceInfo() -> (traced: Bool, parent: Int32, readable: Bool, note: String) {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        errno = 0
         let result = sysctl(&mib, u_int(mib.count), &info, &size, nil, 0)
-        let traced = result == 0 && (info.kp_proc.p_flag & pTraced) != 0
-        return (traced, getppid())
+        let sysctlError = errno
+        if result == 0 {
+            let traced = (info.kp_proc.p_flag & pTraced) != 0
+            return (traced, getppid(), true, traced ? "CÓ (debugger đang attach)" : "KHÔNG")
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 256)
+        errno = 0
+        let got = buffer.withUnsafeMutableBytes { raw in
+            devbox_proc_pidinfo(getpid(), procPidTBSDInfo, 0, raw.baseAddress, Int32(raw.count))
+        }
+        let infoError = errno
+        if got > 0 {
+            let flags = buffer.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+            let traced = (flags & procFlagTraced) != 0
+            return (traced, getppid(), true, traced ? "CÓ (debugger đang attach)" : "KHÔNG")
+        }
+
+        let detail = infoError != 0 ? "\(infoError)" : "0"
+        return (false, getppid(), false, "không đọc được (sysctl errno \(sysctlError), proc_pidinfo errno \(detail))")
     }
 
     static func csFlags() -> UInt32? {
@@ -153,6 +195,8 @@ enum DeviceProbe {
     private static let CS_DEBUGGED: UInt32 = 0x1000_0000
     private static let csOpsStatus: UInt32 = 0
     private static let pTraced: Int32 = 0x0000_0800
+    private static let procPidTBSDInfo: Int32 = 3
+    private static let procFlagTraced: UInt32 = 0x0000_0002
 
     private static func sysctlString(_ name: String) -> String? {
         var size = 0

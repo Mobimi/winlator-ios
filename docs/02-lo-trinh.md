@@ -2,7 +2,7 @@
 
 Ước lượng cho **1 người full-time** (có hỗ trợ của AI), đã có iPhone + Windows + GitHub Actions. Không cần Mac.
 
-**Trạng thái thật (25/10/2026):** M0 ✅ · M1 ✅ (đã build + đóng gói, chờ test trên máy) · M2 🟡 (image + port watch + preview đã có, chưa test thực tế) · M3 ⬜ · M4 ⬜.
+**Trạng thái thật (26/10/2026):** M0 ✅ · M1 ✅ (đã build + đóng gói, chờ test trên máy) · M2 🟡 (image + port watch + preview đã có, chưa test thực tế) · M3 ⬜ · M4 ⬜.
 
 ---
 
@@ -12,10 +12,10 @@
 |---|---|
 | App build trên GitHub Actions | Actions xanh, có `Devbox-unsigned.ipa` |
 | Cài lên iPhone bằng Sideloadly | App mở được, không văng |
-| Bật JIT bằng StikDebug | Tab Thiết lập báo **JIT đã bật**; trước StikDebug phải báo đỏ |
+| Bật JIT bằng StikDebug | Tab Thiết lập báo **`CS_DEBUGGED` = BẬT**; trước StikDebug phải báo TẮT |
 | Console chẩn đoán chạy | Tạo dự án, gõ `help`/`jit`/`mem`, thấy dữ liệu thật |
 
-Đã xong: run `40261345497` cho IPA 7.29 MB (SHA256 `a33d32b4…`, bản **0.2.1 (4)**), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, console đọc từ file `logs/serial.log` (QEMU ghi mọi byte guest in ra, kể cả khi chưa có client nối 4444), kiểm tra JIT bằng `mmap` vùng `MAP_JIT` (log `map_jit:`) — **không còn chạy thử mã máy**, vì chính đoạn đó làm app văng khi bấm Khởi động — và chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Engine TCG dùng lại `MAP_JIT` (log `devbox: jit buffer with MAP_JIT`). Có công tắc **Chế độ chắc chắn (1 CPU)**, mặc định bật, để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
+Đã xong: IPA **0.2.3 (6)** khoảng 7 MB ở release `ipa-v1` (workflow **Build iOS IPA** cập nhật tự động), có tab **Shell** + bảng kết quả từng lệnh, nút **Ẩn bàn phím**, console đọc từ file `logs/serial.log` (QEMU ghi mọi byte guest in ra, kể cả khi chưa có client nối 4444), và chẩn đoán sâu qua QMP: `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. **Engine TCG dùng split-wx** (RW + `mach_vm_remap` alias RX + `mprotect RX`, `-accel …,split-wx=on`): chạy được với app sideload không có entitlement `dynamic-codesigning`, không cần `MAP_JIT` — log `MAP_JIT … errno 22` là bình thường. App chỉ chặn boot khi `CS_DEBUGGED` chưa bật; `P_TRACED` thường là KHÔNG vì StikDebug detach sau khi bật JIT. Có công tắc **Chế độ chắc chắn (1 CPU)**, mặc định bật, để loại trừ lỗi multi-thread TCG. JIT đọc đúng `CS_DEBUGGED` trên iPhone13,4 / iOS 18.4.1. Log nằm trong app Files (`Devbox/logs`: `qemu.log`, `serial.log`, `diagnostics.txt`).
 
 ---
 

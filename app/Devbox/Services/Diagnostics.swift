@@ -19,14 +19,15 @@ enum Diagnostics {
             lines.append("errno: csops=\(device.csopsErrno) · sysctl=\(device.sysctlErrno)")
         }
         lines.append("CS_DEBUGGED: \(device.debugged ? "BẬT" : "TẮT")")
-        lines.append("P_TRACED: \(device.traced ? "CÓ" : "KHÔNG")")
-        lines.append("JIT: \(jitText(device.jit))")
+        lines.append("P_TRACED: \(device.traceNote)")
+        lines.append("JIT: \(jitText(device.jit)) · P_TRACED chỉ CÓ khi debugger còn attach")
         lines.append("Giữ nền: \(keeper.stateText) · \(keeper.category) · \(keeper.uptimeText)")
         lines.append("RAM trống cho app: \(DeviceProbe.availableMemoryMB()) MB · app dùng \(DeviceProbe.footprintMB()) MB")
         lines.append("UIBackgroundModes: \(backgroundModes())")
         lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
+        lines.append("Engine mode: \(QEMUEngine.engineMode) · needsJIT=\(QEMUEngine.engineNeedsJIT)")
         lines.append("Bước cuối: \(engine.lastStage)")
-        lines.append("JIT: \(engine.execNote.isEmpty ? "chưa thử" : engine.execNote)")
+        lines.append("Codegen: \(engine.execNote.isEmpty ? "chưa thử" : engine.execNote)")
         lines.append("Image: \(imageState())")
         if !engine.logLines.isEmpty {
             lines.append("QEMU log:")

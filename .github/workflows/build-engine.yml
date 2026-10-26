@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  DEVBOX_ENGINE: interp
+  DEVBOX_ENGINE: tcg
 
 jobs:
   engine:
@@ -46,17 +46,37 @@ jobs:
         run: |
           CONF="$(ls engine/build/src/qemu-*/build/config-host.h | head -1)"
           echo "--- config: $CONF ---"
-          grep -E "TCG_(THREADED_)?INTERPRETER" "$CONF" || echo "(khong co dong nao)"
-          if [ "$DEVBOX_ENGINE" = "interp" ]; then
-            grep -q "define CONFIG_TCG_THREADED_INTERPRETER 1" "$CONF" || \
-              grep -q "define CONFIG_TCG_INTERPRETER 1" "$CONF" || \
-              { echo "FAIL: build khong bat interpreter"; exit 1; }
-            echo "interpreter: ON"
-          fi
+          grep -E "CONFIG_TCG" "$CONF" || echo "(khong co dong nao)"
+          case "$DEVBOX_ENGINE" in
+            interp)
+              grep -qE "^#define CONFIG_TCG_(THREADED_)?INTERPRETER( 1)?$" "$CONF" || \
+                { echo "FAIL: build khong bat interpreter"; exit 1; }
+              echo "interpreter: ON"
+              ;;
+            tcg)
+              if grep -qE "^#define CONFIG_TCG_(THREADED_)?INTERPRETER( 1)?$" "$CONF"; then
+                echo "FAIL: TCG build lai bat interpreter"
+                exit 1
+              fi
+              echo "interpreter: OFF (TCG)"
+              ;;
+            *)
+              echo "FAIL: DEVBOX_ENGINE khong hop le: $DEVBOX_ENGINE"
+              exit 1
+              ;;
+          esac
           echo "--- binary ---"
           BIN="engine/out/Frameworks/qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"
           ls -l "$BIN"
           shasum -a 256 "$BIN"
+          echo "--- split-wx ---"
+          grep -qE "^#define CONFIG_DARWIN 1$" "$CONF" || \
+            { echo "FAIL: engine khong build cho Darwin"; exit 1; }
+          strings -a "$BIN" | grep -q "vm_remap for jit splitwx failed" || \
+            { echo "FAIL: engine thieu split-wx vmremap (QEMU quá cũ?)"; exit 1; }
+          echo "split-wx: ON (vm_remap)"
+          nm -u "$BIN" | grep -q "_mach_vm_remap" && echo "mach_vm_remap: OK" || \
+            echo "mach_vm_remap: khong thay trong nm (bo qua)"
           echo "--- marker (khong bat buoc) ---"
           strings -a "$BIN" | grep -c "devbox-engine-interp" || echo "marker bi strip, bo qua"
 
@@ -91,11 +111,10 @@ jobs:
           cd engine/out
           zip -qry "$RUNNER_TEMP/devbox-engine.zip" Frameworks
           gh release view engine-v1 >/dev/null 2>&1 || \
-            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks. devbox-engine.zip = threaded interpreter (no JIT needed), devbox-engine-tcg.zip = TCG (needs MAP_JIT)."
+            gh release create engine-v1 --title "Devbox QEMU engine" --notes "QEMU 10.0.12 aarch64-softmmu for iOS arm64, packed as frameworks. devbox-engine.zip = TCG + split-wx (needs JIT via StikDebug, no MAP_JIT entitlement). devbox-engine-tcg.zip = stable TCG copy for the IPA workflow."
           if ! gh release view engine-v1 --json assets -q '.assets[].name' | grep -qx "devbox-engine-tcg.zip"; then
-            if gh release download engine-v1 -p devbox-engine.zip -O "$RUNNER_TEMP/devbox-engine-tcg.zip"; then
-              gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine-tcg.zip" --clobber
-            fi
+            cp "$RUNNER_TEMP/devbox-engine.zip" "$RUNNER_TEMP/devbox-engine-tcg.zip"
+            gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine-tcg.zip" --clobber
           fi
           gh release upload engine-v1 "$RUNNER_TEMP/devbox-engine.zip" --clobber
           ls -lh "$RUNNER_TEMP/devbox-engine.zip"

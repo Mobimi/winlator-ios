@@ -11,7 +11,7 @@ struct ProjectsView: View {
     var body: some View {
         NavigationStack {
             List {
-                if !app.device.jit.isGranted {
+                if !app.device.jitReady {
                     Section {
                         JITBanner(state: app.device.jit)
                     }

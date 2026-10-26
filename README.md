@@ -5,11 +5,11 @@
 
 Dự án này là hướng đi tiếp theo sau khi bỏ ý tưởng Winlator (xem `docs/archive-winlator/`).
 
-> **Trạng thái thật (2026-10-26):** app đã cài và chạy trên iPhone 12 Pro Max / iOS 18.4.1 với StikDebug (JIT bật, `CS_DEBUGGED`). Bản 0.2.0 khởi động được QEMU, vào main loop, nhưng guest không thực thi lệnh nào (PC đứng yên, đĩa đọc 0 B). Bản 0.2.1 sửa lỗi **văng ngay khi bấm Khởi động** (app tự chạy thử mã máy trên vùng RWX không có quyền thực thi) và trả TCG về `MAP_JIT` như UTM — **đang chờ kết quả boot trên máy**.
+> **Trạng thái thật (2026-10-26):** app đã cài và chạy trên iPhone 12 Pro Max / iOS 18.4.1 với StikDebug (`CS_DEBUGGED` bật). Bản 0.2.0 vào main loop nhưng guest không thực thi lệnh nào; 0.2.1 văng vì app tự chạy thử mã máy trên vùng RWX không có quyền thực thi; **0.2.3 đưa TCG về `split-wx` đúng như UTM**: `mmap` RW + `mach_vm_remap` alias RX + `mprotect(RX)`, **không dùng `MAP_JIT`**, không cần entitlement `dynamic-codesigning`. App kiểm tra chính đường split-wx trước khi boot và ghi kết quả vào `qemu.log` (`split-wx: …`).
 >
-> **Đã build xanh:** workflow **Build iOS IPA** run `40261345497` → `Devbox-unsigned.ipa` 7.29 MB (SHA256 `a33d32b4…`, phiên bản 0.2.1 build 4, có `Frameworks/qemu-aarch64-softmmu` 27.24 MB + glib/gio/pixman/slirp/zstd/libffi). Workflow **Build QEMU engine** → release `engine-v1`. Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
+> **Pipeline:** workflow **Build iOS IPA** đóng gói `Devbox-unsigned.ipa` (~7 MB) vào release `ipa-v1`, có `Frameworks/qemu-aarch64-softmmu` 27 MB + glib/gio/pixman/slirp/zstd/libffi. Workflow **Build QEMU engine** → release `engine-v1` (`devbox-engine.zip`, TCG + split-wx). Workflow **Build Debian image** → release `img-v1`: rootfs ext4 ~1.9 GB (zstd 423 MB), kernel 6.12.113, Python 3.13.5, Node 22.23.4, thêm tmux/ssh/ripgrep.
 >
-> **Mới ở bản 0.2.1:** bỏ hoàn toàn đoạn chạy thử mã máy trong app (đó là nguyên nhân văng); JIT được kiểm tra bằng `mmap` vùng `MAP_JIT` 256 → 16 MB rồi `mprotect` RWX, kết quả vào `qemu.log` dạng `map_jit: …`; app **không ghi** vào trang JIT vì APRR làm thread mới bị kill khi ghi. Engine map code buffer TCG bằng `MAP_JIT` (giống UTM), log `devbox: jit buffer with MAP_JIT`. Console vẫn đọc trực tiếp `Devbox/logs/serial.log`, chẩn đoán sâu qua QMP lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Công tắc **Chế độ chắc chắn (1 CPU)** bật mặc định.
+> **Mới ở bản 0.2.3:** engine TCG chạy bằng `-accel tcg,split-wx=on` (RW + RX alias), không cần `MAP_JIT`; app thử split-wx 256 → 16 MB rồi mới quyết định boot. `P_TRACED` chỉ CÓ khi debugger còn attach — StikDebug detach sau khi bật JIT nên `P_TRACED = KHÔNG` **là bình thường**, `CS_DEBUGGED` mới là cờ JIT thật. `MAP_JIT` errno 22 cũng bình thường với app sideload và không còn chặn boot. Console vẫn đọc trực tiếp `Devbox/logs/serial.log`, chẩn đoán sâu qua QMP lấy `PC`, `info cpus`, `info jit`, `rd_bytes`, mã lệnh tại `PC`, 16 word đầu RAM. Công tắc **Chế độ chắc chắn (1 CPU)** bật mặc định.
 >
 > **Image đã boot thật trong CI** (`Test image boot`, chạy tự động trước khi publish): vào prompt sau **62.9 giây** bằng TCG; `python3`/`node`/`npm`/`git`/`gcc`/`tmux`/`rg` OK, sshd nghe cổng 22, `devbox-killport` OK, có mạng ra PyPI, `portwatch` báo cổng 5173 và `http://127.0.0.1:5173` từ host trả HTML, `poweroff` sạch. Chưa test phần app trên iPhone.
 
@@ -163,9 +163,10 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 ```
 [x] Phân tích & chốt kiến trúc
 [x] App shell: dự án (lưu thật), console chẩn đoán thật, kiểm tra JIT bằng CS_DEBUGGED
-[x] Pipeline build IPA tự động (GitHub Actions) — IPA 6.99 MB có engine QEMU nhúng
+[x] Pipeline build IPA tự động (GitHub Actions) — IPA ~7 MB có engine QEMU nhúng
 [x] Pipeline build image Debian 13 ARM64 — 423 MB nén, Python/Node/npm chạy thật
 [x] Engine QEMU 10.0.12 (UTM fork) build cho iOS arm64, đóng gói framework, phát hành `engine-v1`
+[x] Engine TCG dùng `split-wx` (RW + `mach_vm_remap` RX alias), không cần `MAP_JIT`/entitlement JIT
 [x] App tải image từ release `img-v1`, kiểm SHA256, giải nén zstd tại chỗ
 [x] Image boot thật trong CI: prompt sau 62 giây, python/node/npm/git/gcc OK, mạng ra PyPI OK
 [x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
