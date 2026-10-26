@@ -6,7 +6,7 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 
 | Giai đoạn | CLI |
 |---|---|
-| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot và xác nhận output lệnh trên iPhone 12 Pro Max (0.2.4 (8)). |
+| **Hiện tại (26/10/2026)** | **Có**, sau khi cài image và boot. Guest là Debian 13 ARM64 thật: `bash`, `python3`, `node`, `npm`, `git`, `gcc` chạy thật trong máy ảo. Đã boot và xác nhận output lệnh trên iPhone 12 Pro Max (0.2.4 (8)); bản mới nhất **0.3.0 (11)** thêm bôi đen/chép nhiều dòng, mã thoát, lọc lỗi, import file và tự vá PATH/npm prefix. |
 | **Console khi chưa cài image** | Chỉ chạy lệnh chẩn đoán thật (`jit`, `diag`, `bg`, `mem`, `uname`, `df`, `ls`, `engine`). Gõ `python`/`npm` sẽ báo chưa có image. Không có kết quả giả. |
 | **Giới hạn** | Không phải terminal grid: `vim`, `htop`, `less` hiển thị lộn xộn trong tab Shell. Bật SSH (menu ⋯ → Cài gói bổ sung) rồi dùng Blink/Termius nếu cần TUI đầy đủ. |
 
