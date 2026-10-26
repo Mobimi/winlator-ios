@@ -159,6 +159,13 @@ opencode                        # hoặc: aider --model deepseek/deepseek-chat
 
 Các CLI này là JavaScript/Python thuần (không cần GPU), nên chỉ cần Node 22/Python 3.13 + mạng + key. Riêng OpenCode/Claude Code sẽ bật thêm language server (`tsserver`, `pyright`) cho từng dự án — đó là phần tốn RAM nhất, nên mở dự án nhỏ trước.
 
+Kiểm tra nhanh trước khi cài (cả hai phải OK):
+
+```bash
+curl -sI https://api.deepseek.com | head -1   # phải thấy HTTP/2 200/401..., không phải lỗi certificate
+df -h / && free -m                            # còn ≥1 GB đĩa và ≥300 MB RAM trống
+```
+
 Giới hạn cần biết trước khi chạy agent dài:
 
 | Giới hạn | Cách xử lý |
