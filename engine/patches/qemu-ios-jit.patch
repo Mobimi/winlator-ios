@@ -1,22 +1,20 @@
 --- a/tcg/region.c
 +++ b/tcg/region.c
-@@ -770,17 +770,14 @@
-      */
-     prot = PROT_NONE;
-     flags = MAP_PRIVATE | MAP_ANONYMOUS;
- #if defined(CONFIG_TCG_INTERPRETER) || defined(CONFIG_TCG_THREADED_INTERPRETER)
-     /* The tcg interpreter does not need execute permission. */
-     prot = PROT_READ | PROT_WRITE;
--#elif defined(CONFIG_DARWIN)
--    /* Applicable to both iOS and macOS (Apple Silicon). */
--    if (!splitwx) {
+@@ -776,7 +776,16 @@ static int alloc_code_gen_buffer(size_t size, int splitwx, Error **errp)
+ #elif defined(CONFIG_DARWIN)
+     /* Applicable to both iOS and macOS (Apple Silicon). */
+     if (!splitwx) {
 -        flags |= MAP_JIT;
--    }
-+#elif defined(__APPLE__)
-+    prot = PROT_READ | PROT_WRITE | PROT_EXEC;
++        size_t probe_size = qemu_real_host_page_size();
++        void *probe = mmap(NULL, probe_size, PROT_NONE,
++                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_JIT, -1, 0);
++        if (probe != MAP_FAILED) {
++            munmap(probe, probe_size);
++            flags |= MAP_JIT;
++            fprintf(stderr, "devbox: jit buffer with MAP_JIT\n");
++        } else {
++            fprintf(stderr, "devbox: jit buffer without MAP_JIT, errno %d\n", errno);
++        }
+     }
  #endif
- 
-     return alloc_code_gen_buffer_anon(size, prot, flags, errp);
- }
- #endif /* USE_STATIC_CODE_GEN_BUFFER, WIN32, POSIX */
  
