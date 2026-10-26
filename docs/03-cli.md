@@ -15,13 +15,15 @@ Câu hỏi hay gặp: *"app này có chạy được CLI thật không, hay ch�
 Tab **Shell** là cửa nhập lệnh chính, dùng chung phiên console với tab Terminal:
 
 - **Gợi ý 4 lớp**: lịch sử (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git `, `npm `, `apt `, `python3 -m `, `systemctl `…), đường dẫn thật (`/mnt/share/…` đọc từ máy, `~/projects/<slug>`).
-- **Bảng kết quả**: mỗi lệnh một khối `$ lệnh` + output + trạng thái; nút ⤢ xem toàn màn hình, copy/share. Tab **Console thô** xem nguyên luồng serial.
+- **Bảng kết quả**: mỗi lệnh một khối `$ lệnh` + output, nhãn **✓ / ✗ mã thoát** lấy từ `PROMPT_COMMAND` của shell, thời gian chạy và số lỗi/cảnh báo. Giữ lâu rồi kéo để bôi đen nhiều dòng ở cả **Kết quả** và **Console thô**; menu từng khối có **Chép lệnh / Chép kết quả / Chép lệnh + kết quả / Điền lại / Chạy lại**. Nút **Chỉ lỗi** ẩn các lệnh không có lỗi.
 - **Chẩn đoán**: băng trạng thái nói rõ đang ở bước nào (QEMU khởi động → máy ảo boot → nối console → chờ prompt `dev@devbox` → nhận byte đầu tiên). Gửi lệnh mà ~10 giây không có output và console im lặng thì app đánh dấu **Debian không trả lời** (không tự đóng/mở lại cổng serial), kèm **Ctrl-C** / **Nối lại**.
 - **Ẩn bàn phím**: nút **Ẩn phím** trên hàng phím nhanh và nút **Ẩn bàn phím** trên bàn phím.
 - **↑ / ↓** gọi lại lệnh; lịch sử lưu trong `Documents/logs/shell.json` nên mở lại app vẫn còn.
 - **Snippet**: lưu lệnh hay dùng, bấm là chạy.
-- **Trạng thái**: `đã gửi` → `đang chạy` → `xong`.
-- **Sửa lỗi**: `command not found: rg` → chip `apt install -y ripgrep`.
+- **Trạng thái**: `đã gửi` → `đang chạy` → `xong` kèm ✓/✗ và mã thoát thật.
+- **Sửa lỗi**: `command not found: rg` → chip `apt install -y ripgrep`; `npm error code EACCES` → đổi prefix về `~/.local`; CRLF/`Permission denied` → chạy bằng trình thông dịch; hết đĩa/DNS → lệnh dọn hoặc sửa `resolv.conf`.
+- **Đưa file vào máy ảo**: menu ⋯ → **Đưa file vào máy ảo…**, chọn từ app Files; file vào `/mnt/share/_import`.
+- **Kiểm tra nhanh**: menu ⋯ → **Kiểm tra nhanh (đĩa/mạng/node)**, một lượt `df`/`free`/DNS/TLS registry/`python3`/`node`/`npm prefix`.
 - **Cảnh báo**: `rm -rf /`, `mkfs`, `dd if=`, fork bomb → hộp thoại xác nhận.
 - **Cổng**: xem/mở/copy URL/tắt cổng đang mở.
 - **stty tự động**: app gửi `stty cols/rows` đúng bề rộng màn hình, gửi lại khi xoay máy.
@@ -163,7 +165,7 @@ export DEEPSEEK_API_KEY=...       # xem cảnh báo bên dưới
 dsh web                           # hoặc: opencode / aider --model deepseek/deepseek-chat
 ```
 
-> Bấm **Cài gói bổ sung** trong tab Shell cũng tự đặt prefix này (và cài `tmux`, `ssh`, `rg`), nên nếu đã bấm thì bỏ qua 3 dòng đầu.
+> Bấm **Cài gói bổ sung** trong tab Shell cũng tự đặt prefix này (và cài `tmux`, `ssh`, `rg`). Từ **0.3.0 (11)** app tự thêm `~/.local/bin` vào PATH và tạo `~/.npmrc` (`prefix=~/.local`) ngay khi boot, nên bình thường bỏ qua được 3 dòng đầu.
 
 Các CLI này là JavaScript/Python thuần (không cần GPU), nên chỉ cần Node 22/Python 3.13 + mạng + key. Riêng OpenCode/Claude Code sẽ bật thêm language server (`tsserver`, `pyright`) cho từng dự án — đó là phần tốn RAM nhất, nên mở dự án nhỏ trước.
 
@@ -203,6 +205,27 @@ npm test 2>&1 | head -20  # chỉ cần 20 dòng đầu, phần sau là stack tr
 | Hàng trăm dòng `npm error` cho một lỗi | npm in cả stack + log | Đọc 2–3 dòng đầu: `npm error code …`, `npm error path …`, dòng cuối `npm error A complete log…` |
 
 `npm test` chỉ là alias của `npm run test`; nếu dự án không có script đó thì lỗi là đúng, không phải app hay image hỏng.
+
+### Mã lỗi npm hay gặp
+
+Từ **0.3.0 (11)**, app tự làm hai việc mỗi lần boot: thêm `~/.local/bin` vào PATH và tạo `~/.npmrc` với `prefix=~/.local` nếu file chưa có `prefix`, nên `npm i -g` không còn ghi vào `/usr/local` của root. Nếu vẫn thấy lỗi, đối chiếu mã ở dòng `npm error code …`:
+
+| Mã | Nghĩa | Cách sửa trong app |
+|---|---|---|
+| `EACCES` | không có quyền ghi `/usr/local/lib/node_modules` | chip gợi ý đổi `npm config set prefix ~/.local`; hoặc bấm **Cài gói bổ sung** một lần |
+| `ENOSPC` | hết đĩa (image chỉ còn ~440 MB cho `dev`) | chip gợi ý `apt-get clean` + xoá `~/.npm/_cacache`, `~/.cache/pip`; xem `df -h /` |
+| `ERESOLVE` | xung đột peer dependency | chip thêm `--legacy-peer-deps` (chỉ dùng khi hiểu rủi ro) |
+| `EINTEGRITY` | cache npm hỏng, hay gặp sau khi hết đĩa | chip chạy `npm cache clean --force` rồi cài lại |
+| `E404` / `E403` | sai tên gói hoặc registry chặn | chip chạy `npm view <gói> version` để kiểm tra tên |
+| `ETARGET` | phiên bản bạn xin không tồn tại | chip chạy `npm view <gói> versions --json \| tail -8` |
+| `ETIMEDOUT` / `ENOTFOUND` | mạng/DNS của máy ảo | menu ⋯ → **Kiểm tra nhanh**; chip DNS sửa `/etc/resolv.conf` |
+
+Nếu vẫn lỗi, gửi đúng 20 dòng đầu chứ không cần cả log:
+
+```bash
+npm install 2>&1 | head -20
+# hoặc menu ⋯ → Sao chép 20 dòng cuối
+```
 
 ## Ngân sách tài nguyên (số thật)
 

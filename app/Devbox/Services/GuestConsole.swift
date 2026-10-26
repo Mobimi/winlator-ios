@@ -36,6 +36,21 @@ final class GuestConsole: ObservableObject {
     /// map lại toàn bộ 2000 dòng để kiểm tra thay đổi.
     @Published private(set) var displayRevision = 0
 
+    /// Dòng `__DEVBOX_EXIT:<mã>` do `PROMPT_COMMAND` in ra sau mỗi lệnh. Không
+    /// đưa vào `lineBatch` (không hiện ở UI), chỉ dùng để biết lệnh thành công
+    /// hay hỏng — trước đây app phải đoán qua chữ "error".
+    private static let exitMarker = "__DEVBOX_EXIT:"
+    private(set) var lastExitCode: Int?
+    private(set) var exitCount = 0
+    /// `~/.local/bin` (npm/pip global) + `PROMPT_COMMAND`; gửi một lần mỗi lần
+    /// boot ngay khi bash in prompt đầu tiên.
+    private var didBootstrap = false
+    /// Bash/readline echo lại lệnh bootstrap rất dài và tự ngắt dòng theo bề
+    /// rộng màn hình, nên không lọc theo mẫu được. Trong lúc chờ prompt của
+    /// chính lệnh đó, bỏ các dòng là một phần của chuỗi bootstrap.
+    private var suppressBootstrapEcho = false
+    private var bootstrapEchoMark = 0
+
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "devbox.guest.console")
     private var retryTimer: Timer?
@@ -352,6 +367,11 @@ final class GuestConsole: ObservableObject {
             self.serialDisplay = true
             self.socketHeard = false
             self.serialFallback = false
+            self.didBootstrap = false
+            self.suppressBootstrapEcho = false
+            self.bootstrapEchoMark = 0
+            self.lastExitCode = nil
+            self.exitCount = 0
             self.displayRevision &+= 1
         }
     }
@@ -584,9 +604,11 @@ final class GuestConsole: ObservableObject {
             if !shellSeen {
                 shellSeen = true
             }
-            if promptLine != prompt {
-                promptLine = prompt
-            }
+            // Luôn publish, kể cả khi prompt giống hệt lần trước: chạy 5 lệnh
+            // trong cùng thư mục thì chuỗi prompt không đổi, nếu chỉ publish
+            // khi khác thì ShellModel không biết lệnh đã xong (thẻ kẹt "đang
+            // chạy" rồi bị gắn nhãn "không trả lời").
+            promptLine = prompt
         }
         let ready = Self.isPrompt(line)
         if ready != shellReady {
@@ -595,7 +617,30 @@ final class GuestConsole: ObservableObject {
                 QEMUEngine.trace("console: prompt guest đã sẵn sàng")
             }
         }
+        // Một lần mỗi lần boot: thêm `~/.local/bin` (chỗ `npm i -g`/`pip
+        // --user` cài vào) và bật `PROMPT_COMMAND` in mã thoát của lệnh.
+        if ready && !didBootstrap {
+            didBootstrap = true
+            suppressBootstrapEcho = true
+            bootstrapEchoMark = exitCount
+            // Bootstrap chạy xong sẽ in prompt kèm dấu `__DEVBOX_EXIT`; nếu vì
+            // lý do gì không có (lệnh lỗi cú pháp) thì mở lại sau 4 giây để
+            // console không bị "câm" oan.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                self?.suppressBootstrapEcho = false
+            }
+            sendLine(Self.bootstrapLine, expectReply: false)
+        }
+        if suppressBootstrapEcho && exitCount > bootstrapEchoMark {
+            suppressBootstrapEcho = false
+        }
     }
+
+    /// `hash -r` để bash quên đường dẫn cũ sau khi PATH đổi. `PROMPT_COMMAND`
+    /// in `__DEVBOX_EXIT:<mã>` trước mỗi prompt — `appendLine` lọc dòng này.
+    /// Kèm luôn `~/.npmrc` (nếu chưa có `prefix`): npm global mặc định ghi vào
+    /// `/usr/local` của root nên user `dev` nhận EACCES hàng loạt.
+    private static let bootstrapLine = #"mkdir -p "$HOME/.local/bin"; if ! grep -qs '^prefix=' "$HOME/.npmrc"; then printf 'prefix=%s\n' "$HOME/.local" >> "$HOME/.npmrc"; fi; export PATH="$HOME/.local/bin:$PATH"; hash -r; export PROMPT_COMMAND='printf "__DEVBOX_EXIT:%s\n" "$?"'"#
 
     /// Dùng khi socket vừa nối lại: `currentLine` có thể vẫn còn prompt cũ.
     private func recomputeReadiness() {
@@ -613,9 +658,38 @@ final class GuestConsole: ObservableObject {
     }
 
     private func appendLine(_ text: String) {
+        // Dấu mã thoát: không hiện, không tính vào dòng của lệnh. Nếu lệnh
+        // không kết thúc bằng `\n` (vd `printf x`) thì dấu dính vào cuối dòng
+        // — giữ phần chữ trước dấu, bỏ phần dấu.
+        if let range = text.range(of: Self.exitMarker) {
+            let before = String(text[text.startIndex..<range.lowerBound])
+            if !before.isEmpty, !Self.isInternalEcho(before), !suppressBootstrapEcho {
+                lineBuffer.append(before)
+                lineTotal += 1
+                linesDirty = true
+            }
+            let raw = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if let code = Int(raw) {
+                lastExitCode = code
+                exitCount += 1
+            }
+            return
+        }
+        // Bash echo lại lệnh nội bộ app tự gửi (`stty`, PATH, PROMPT_COMMAND);
+        // echo đó không phải kết quả của người dùng nên bỏ luôn khỏi console.
+        if suppressBootstrapEcho { return }
+        if Self.isInternalEcho(text) { return }
         lineBuffer.append(text)
         lineTotal += 1
         linesDirty = true
+    }
+
+    private static func isInternalEcho(_ line: String) -> Bool {
+        if line.contains("stty cols ") && line.hasSuffix("2>/dev/null") { return true }
+        if line.contains(#"export PATH="$HOME/.local/bin:$PATH""#) { return true }
+        if line.contains("export PROMPT_COMMAND=") { return true }
+        if line.hasSuffix("hash -r") { return true }
+        return false
     }
 
     /// Dựng lại cache dòng hiển thị đúng một lần cho mỗi lần đọc socket.

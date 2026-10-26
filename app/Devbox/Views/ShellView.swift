@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ShellView: View {
     @EnvironmentObject private var app: AppState
@@ -16,7 +17,16 @@ struct ShellView: View {
     @State private var showRaw = false
     @State private var showFull = false
     @State private var didSize = false
+    @State private var importing = false
+    @State private var errorsOnly = false
+    @State private var importNote: String?
+    @AppStorage("devbox.consoleFont") private var consoleFont = 12.0
     @FocusState private var focused: Bool
+
+    private static let rawBottomID = "raw-bottom"
+
+    /// `@AppStorage` chỉ lưu `Double`; SwiftUI cần `CGFloat`.
+    private var codeSize: CGFloat { CGFloat(consoleFont) }
 
     var body: some View {
         NavigationStack {
@@ -31,6 +41,27 @@ struct ShellView: View {
                 inputBar
             }
             .background(Color(red: 0.06, green: 0.06, blue: 0.07))
+            .overlay(alignment: .top) {
+                VStack(spacing: 4) {
+                    if copied {
+                        Text("Đã chép vào bộ nhớ tạm")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .transition(.opacity)
+                    }
+                    if let importNote {
+                        Text(importNote)
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .transition(.opacity)
+                    }
+                }
+                .padding(.top, 6)
+            }
             .navigationTitle("Shell")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -48,11 +79,26 @@ struct ShellView: View {
                     Menu {
                         Button("Lịch sử lệnh") { sheet = .history }
                         Button("Xoá màn hình") { model.clear(guest: guest) }
+                        Button("Kiểm tra nhanh (đĩa/mạng/node)") {
+                            model.healthCheck(guest: guest)
+                        }
+                        .disabled(!guest.acceptsInput)
                         Button("Kiểm tra console (whoami/python3)") {
                             model.runDiagnostics(guest: guest)
                         }
                         .disabled(!guest.acceptsInput)
+                        Divider()
+                        Button("Đưa file vào máy ảo…") { importing = true }
                         Button("Sao chép 20 dòng cuối") { copyTail() }
+                        Button("Sao chép console thô (300 dòng)") {
+                            copy(guest.tail(300).map(\.text).joined(separator: "\n"))
+                        }
+                        Button("Sao chép toàn bộ kết quả") {
+                            UIPasteboard.general.string = model.transcriptText
+                        }
+                        .disabled(model.entries.isEmpty)
+                        Button("Lưu kết quả vào Files (share)") { exportTranscript() }
+                            .disabled(model.entries.isEmpty)
                         Divider()
                         Button("Cài gói bổ sung (tmux/ssh/rg)") {
                             model.installExtras(guest: guest)
@@ -93,6 +139,13 @@ struct ShellView: View {
             }
             .sheet(isPresented: $showFull) {
                 fullResultsSheet
+            }
+            .fileImporter(
+                isPresented: $importing,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: true
+            ) { result in
+                handleImport(result)
             }
             .alert(
                 "Lệnh có thể phá máy ảo",
@@ -186,9 +239,32 @@ struct ShellView: View {
             modeButton("Kết quả", active: !showRaw) { showRaw = false }
             modeButton("Console thô", active: showRaw) { showRaw = true }
             Spacer()
+            if totalErrors > 0 {
+                Button {
+                    errorsOnly.toggle()
+                } label: {
+                    Text(errorsOnly ? "Bỏ lọc lỗi" : "Chỉ lỗi (\(totalErrors))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(errorsOnly ? Color.red.opacity(0.3) : Color.red.opacity(0.12), in: Capsule())
+                        .foregroundStyle(errorsOnly ? Color.white : Color.red.opacity(0.9))
+                }
+                .buttonStyle(.plain)
+            }
             Text("\(guest.receivedBytes) B")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.35))
+            Menu {
+                ForEach([11.0, 12.0, 14.0, 16.0], id: \.self) { size in
+                    Button("\(Int(size)) pt") { consoleFont = size }
+                }
+            } label: {
+                Text("Aa")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.7))
+            }
+            .buttonStyle(.plain)
             Button {
                 showFull = true
             } label: {
@@ -332,8 +408,13 @@ struct ShellView: View {
                             .foregroundStyle(Color.white.opacity(0.55))
                             .textSelection(.enabled)
                             .padding(.top, 10)
+                    } else if errorsOnly && visibleEntries.isEmpty {
+                        Text("Không còn lệnh nào có lỗi — bấm \"Bỏ lọc lỗi\" để xem lại.")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                            .padding(.top, 10)
                     }
-                    ForEach(model.entries) { entry in
+                    ForEach(visibleEntries) { entry in
                         entryView(entry)
                             .id(entry.id)
                     }
@@ -355,49 +436,143 @@ struct ShellView: View {
     }
 
     private func entryView(_ entry: ShellEntry) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let filtering = errorsOnly && entry.errorCount > 0
+        let lines = filtering
+            ? entry.output.filter { ShellEntry.severity(of: $0) == .error }
+            : entry.output
+        return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 6) {
                 Text("$")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.green)
                 Text(entry.command)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(.system(size: max(10, codeSize - 1), weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white)
                     .textSelection(.enabled)
                 Spacer(minLength: 4)
-                Text(entry.note ?? entry.status.label)
+                Text(headline(entry))
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(entryColor(entry))
                     .lineLimit(1)
+                // Menu đặt ở nút riêng thay vì `.contextMenu` trên cả thẻ:
+                // giữ lâu trên chữ phải dùng để bôi đen, nếu gắn contextMenu
+                // thì iOS mở menu và không chọn chữ được.
+                Menu {
+                    entryActions(entry)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+            }
+            if entry.errorCount > 0 || entry.warningCount > 0 {
+                Text(countsText(entry))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(entry.errorCount > 0 ? Color.red.opacity(0.85) : Color.yellow.opacity(0.8))
             }
             if entry.output.isEmpty {
                 Text(emptyEntryText(entry))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.45))
-            } else {
-                ForEach(Array(entry.output.enumerated()), id: \.offset) { _, line in
-                    Text(line.isEmpty ? " " : line)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Color(white: 0.86))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            } else if filtering {
+                // Chỉ hiện dòng lỗi, gộp một Text để vẫn bôi đen nhiều dòng.
+                Text(lines.joined(separator: "\n"))
+                    .font(.system(size: codeSize, design: .monospaced))
+                    .foregroundStyle(.red.opacity(0.9))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if lines.count < entry.output.count {
+                    Text("… \(entry.output.count - lines.count) dòng khác bị ẩn")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.35))
                 }
+            } else {
+                // Một Text cho cả khối: giữ nguyên xuống dòng nên bôi đen được
+                // nhiều dòng liền (trước đây mỗi dòng một Text, chỉ chọn 1 dòng).
+                Text(lines.joined(separator: "\n"))
+                    .font(.system(size: codeSize, design: .monospaced))
+                    .foregroundStyle(Color(white: 0.86))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(10)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = ([entry.command] + entry.output).joined(separator: "\n")
-                copied = true
-            } label: {
-                Label("Copy kết quả", systemImage: "doc.on.doc")
-            }
-            Button {
-                sheet = .ports
-            } label: {
-                Label("Cổng đang mở", systemImage: "network")
-            }
+    }
+
+    @ViewBuilder
+    private func entryActions(_ entry: ShellEntry) -> some View {
+        Button {
+            copy(entry.command)
+        } label: {
+            Label("Chép lệnh", systemImage: "terminal")
+        }
+        Button {
+            copy(entry.output.joined(separator: "\n"))
+        } label: {
+            Label("Chép kết quả", systemImage: "doc.on.doc")
+        }
+        Button {
+            copy(([entry.command] + entry.output).joined(separator: "\n"))
+        } label: {
+            Label("Chép lệnh + kết quả", systemImage: "doc.on.clipboard")
+        }
+        Divider()
+        Button {
+            model.input = entry.command
+            model.refresh()
+            focused = true
+        } label: {
+            Label("Điền lại lệnh", systemImage: "arrow.uturn.left")
+        }
+        Button {
+            guard guest.acceptsInput else { return }
+            model.input = entry.command
+            model.submit(guest)
+            focused = true
+        } label: {
+            Label("Chạy lại", systemImage: "arrow.clockwise")
+        }
+        .disabled(!guest.acceptsInput)
+        Divider()
+        Button {
+            sheet = .ports
+        } label: {
+            Label("Cổng đang mở", systemImage: "network")
+        }
+    }
+
+    /// Khi bật "Chỉ lỗi" thì ẩn luôn cả thẻ không có lỗi nào.
+    private var visibleEntries: [ShellEntry] {
+        errorsOnly ? model.entries.filter { $0.errorCount > 0 } : model.entries
+    }
+
+    private var totalErrors: Int {
+        model.entries.reduce(0) { $0 + $1.errorCount }
+    }
+
+    private func headline(_ entry: ShellEntry) -> String {
+        if let note = entry.note { return note }
+        if let code = entry.exitCode {
+            let mark = code == 0 ? "✓" : "✗ \(code)"
+            return entry.durationText.map { "\(mark) · \($0)" } ?? mark
+        }
+        return entry.status.label
+    }
+
+    private func countsText(_ entry: ShellEntry) -> String {
+        var parts: [String] = []
+        if entry.errorCount > 0 { parts.append("\(entry.errorCount) lỗi") }
+        if entry.warningCount > 0 { parts.append("\(entry.warningCount) cảnh báo") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func copy(_ text: String) {
+        UIPasteboard.general.string = text
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            copied = false
         }
     }
 
@@ -410,6 +585,7 @@ struct ShellView: View {
     }
 
     private func entryColor(_ entry: ShellEntry) -> Color {
+        if let code = entry.exitCode { return code == 0 ? .green : .red }
         switch entry.status {
         case .waiting: return .yellow
         case .running: return .orange
@@ -421,20 +597,23 @@ struct ShellView: View {
     private var rawConsole: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 1) {
                     if guest.rows.isEmpty {
                         Text("Console chưa nhận được dữ liệu nào.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(Color.white.opacity(0.5))
                             .padding(.top, 12)
-                    }
-                    ForEach(guest.tail(300)) { row in
-                        Text(row.text.isEmpty ? " " : row.text)
-                            .font(.system(size: 12, design: .monospaced))
+                    } else {
+                        // Một Text cho cả khối: bôi đen được nhiều dòng rồi
+                        // Copy, thay vì mỗi dòng một Text (chỉ chọn 1 dòng).
+                        // Không gắn contextMenu ở đây vì nó chiếm thao tác giữ
+                        // lâu — muốn copy cả khối thì dùng menu ở thanh trên.
+                        Text(guest.tail(300).map(\.text).joined(separator: "\n"))
+                            .font(.system(size: codeSize, design: .monospaced))
                             .foregroundStyle(Color(white: 0.86))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .id(row.id)
+                        Color.clear.frame(height: 1).id(Self.rawBottomID)
                     }
                 }
                 .padding(10)
@@ -537,6 +716,19 @@ struct ShellView: View {
                 }
                 key("Esc") { guest.sendKey(.escape) }
                 key("Ctrl-C") { guest.sendKey(.controlC) }
+                key("Dán") {
+                    guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+                    model.input += text.trimmingCharacters(in: .newlines)
+                    model.refresh()
+                    focused = true
+                }
+                key("Chép") {
+                    if showRaw {
+                        copy(guest.tail(300).map(\.text).joined(separator: "\n"))
+                    } else if let last = model.entries.last {
+                        copy(([last.command] + last.output).joined(separator: "\n"))
+                    }
+                }
                 Button {
                     focused = false
                 } label: {
@@ -771,7 +963,7 @@ struct ShellView: View {
                     .ignoresSafeArea()
                 ScrollView {
                     Text(model.transcriptText)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: codeSize, design: .monospaced))
                         .foregroundStyle(Color(white: 0.9))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -889,7 +1081,7 @@ struct ShellView: View {
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
         // Terminal cần bám đáy ngay; animation mỗi lần có dòng mới sẽ xếp
         // hàng hàng trăm animation và làm giao diện giật.
-        proxy.scrollTo(guest.lastRowID, anchor: .bottom)
+        proxy.scrollTo(Self.rawBottomID, anchor: .bottom)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -900,6 +1092,43 @@ struct ShellView: View {
     private func copyTail() {
         let text = guest.tail(20).map(\.text).joined(separator: "\n")
         UIPasteboard.general.string = text
+    }
+
+    /// Xuất toàn bộ kết quả ra `Devbox/share/devbox-output.txt` để mở bằng app
+    /// Files trên iPhone (hoặc copy sang máy khác) khi cần gửi log dài.
+    private func exportTranscript() {
+        let dir = DevboxConfig.shareDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("devbox-output.txt")
+        do {
+            try model.transcriptText.write(to: url, atomically: true, encoding: .utf8)
+            importNote = "Đã lưu Devbox/share/devbox-output.txt"
+        } catch {
+            importNote = "Không ghi được file: \(error.localizedDescription)"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { self.importNote = nil }
+    }
+
+    /// Người dùng chọn file/thư mục từ app Files: chép vào `share/_import`
+    /// (9p → `/mnt/share/_import`) rồi điền sẵn lệnh xem thư mục đó.
+    private func handleImport(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        let model = self.model
+        importNote = "Đang chép \(urls.count) mục vào /mnt/share/_import…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let count = ShellModel.importIntoShare(urls)
+            DispatchQueue.main.async {
+                guard count > 0 else {
+                    self.importNote = "Không chép được mục nào — kiểm tra quyền truy cập file"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { self.importNote = nil }
+                    return
+                }
+                model.input = "cd /mnt/share/_import && ls -la"
+                model.refresh()
+                self.importNote = "Đã chép \(count) mục — bấm Enter để xem"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { self.importNote = nil }
+            }
+        }
     }
 
     @discardableResult

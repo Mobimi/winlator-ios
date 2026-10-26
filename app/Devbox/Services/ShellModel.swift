@@ -25,6 +25,46 @@ struct ShellEntry: Identifiable {
     var status: Status = .waiting
     var startedAt = Date()
     var finishedAt: Date?
+    /// Mã thoát lấy từ `__DEVBOX_EXIT:` (nil nếu lệnh chưa xong hoặc shell cũ).
+    var exitCode: Int?
+    /// Chuỗi thật đã gửi vào bash. Với lệnh nội bộ, `command` chỉ là nhãn ngắn
+    /// ("Kiểm tra nhanh") còn đây là cả dòng dài — cần để lọc phần bash echo lại.
+    var sentLine: String?
+    /// Đếm sẵn khi thêm dòng để view không phải quét lại toàn bộ output.
+    var errorCount = 0
+    var warningCount = 0
+
+    enum Severity {
+        case normal
+        case warning
+        case error
+    }
+
+    /// Phân loại một dòng output. Chỉ để tô màu/lọc, không dùng để chẩn đoán
+    /// (chẩn đoán vẫn theo đúng mẫu lỗi của `ShellModel.diagnose`).
+    static func severity(of line: String) -> Severity {
+        let text = line.lowercased()
+        if text.hasPrefix("e: ") { return .error }
+        if text.hasPrefix("w: ") { return .warning }
+        let errors = [
+            "npm error", "npm err!", "error:", "fatal:", "traceback (most recent call last)",
+            "command not found", "no such file or directory", "permission denied", "eacces",
+            "enospc", "cannot find module", "errno ", "make: ***", "not found"
+        ]
+        if errors.contains(where: { text.contains($0) }) { return .error }
+        let warnings = ["npm warn", "warning:", "warn:", "deprecated", "notice"]
+        if warnings.contains(where: { text.contains($0) }) { return .warning }
+        return .normal
+    }
+
+    var durationText: String? {
+        guard let finishedAt else { return nil }
+        let seconds = finishedAt.timeIntervalSince(startedAt)
+        if seconds < 1 { return String(format: "%.0f ms", seconds * 1000) }
+        if seconds < 60 { return String(format: "%.1f s", seconds) }
+        return String(format: "%d m %02.0f s", Int(seconds / 60),
+                      seconds.truncatingRemainder(dividingBy: 60))
+    }
 }
 
 final class ShellModel: ObservableObject {
@@ -70,6 +110,8 @@ final class ShellModel: ObservableObject {
     /// Khoá của lần chẩn đoán gần nhất (command + dòng lỗi). Tránh quét lại
     /// thư mục trên iPhone cho cùng một lỗi ở mỗi chunk output.
     private var lastDiagnosis = ""
+    /// `guest.exitCount` tại lúc gửi lệnh; chênh lệch nghĩa là có mã thoát mới.
+    private var exitBase = 0
 
     var transcriptText: String {
         entries.map { entry in
@@ -259,6 +301,53 @@ final class ShellModel: ObservableObject {
               line: "echo DEVBOX-PING; whoami; pwd; python3 -V; node -v")
     }
 
+    /// Một lượt kiểm tra những thứ hay làm `npm`/`pip` lỗi hàng loạt: đĩa,
+    /// RAM, DNS, TLS tới registry, phiên bản python/node/npm, prefix npm.
+    func healthCheck(guest: GuestConsole) {
+        guard guest.acceptsInput else { return }
+        begin(display: "Kiểm tra nhanh", note: "đĩa · mạng · node", guest: guest,
+              line: Self.healthLine)
+    }
+
+    private static let healthLine = #"echo "== Devbox check =="; uname -m; df -h / | tail -1; free -m | sed -n 2p; (getent hosts registry.npmjs.org >/dev/null && echo "DNS ok" || echo "DNS FAIL"); curl -sI --max-time 8 https://registry.npmjs.org | head -1; python3 -V; node -v; npm -v; echo -n "npm prefix: "; npm config get prefix"#
+
+    /// Chép file/thư mục người dùng chọn từ app Files vào `share/_import` để
+    /// máy ảo thấy ngay ở `/mnt/share/_import` (9p). Trả về số mục chép được.
+    static func importIntoShare(_ urls: [URL]) -> Int {
+        let fm = FileManager.default
+        let root = DevboxConfig.shareDirectory.appendingPathComponent("_import", isDirectory: true)
+        try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+        var copied = 0
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let dest = uniqueDestination(for: url, in: root)
+            do {
+                try fm.copyItem(at: url, to: dest)
+                copied += 1
+            } catch {
+                continue
+            }
+        }
+        return copied
+    }
+
+    /// Không ghi đè file cùng tên đã có trong `_import`.
+    private static func uniqueDestination(for url: URL, in root: URL) -> URL {
+        let fm = FileManager.default
+        let ext = url.pathExtension
+        let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        var name = url.lastPathComponent
+        var dest = root.appendingPathComponent(name)
+        var index = 2
+        while fm.fileExists(atPath: dest.path) {
+            name = ext.isEmpty ? "\(base)-\(index)" : "\(base)-\(index).\(ext)"
+            dest = root.appendingPathComponent(name)
+            index += 1
+        }
+        return dest
+    }
+
     private static let extraScript = """
     #!/bin/bash
     set -e
@@ -313,6 +402,7 @@ final class ShellModel: ObservableObject {
         silent = false
         consumedTotal = 0
         lastDiagnosis = ""
+        exitBase = guest.exitCount
     }
 
     func applySize(cols: Int, rows: Int, guest: GuestConsole) {
@@ -325,9 +415,12 @@ final class ShellModel: ObservableObject {
         lastCommand = command
         fix = nil
         lastDiagnosis = ""
+        exitBase = guest.exitCount
         input = ""
         state = .sent
-        entries.append(ShellEntry(command: command, note: note))
+        var entry = ShellEntry(command: command, note: note)
+        entry.sentLine = command
+        entries.append(entry)
         if entries.count > 60 {
             entries.removeFirst(entries.count - 60)
         }
@@ -341,9 +434,12 @@ final class ShellModel: ObservableObject {
     private func begin(display: String, note: String?, guest: GuestConsole, line: String) {
         lastCommand = display
         state = .sent
-        entries.append(ShellEntry(command: display, note: note))
+        var entry = ShellEntry(command: display, note: note)
+        entry.sentLine = line
+        entries.append(entry)
         silent = false
         lastDiagnosis = ""
+        exitBase = guest.exitCount
         consumedTotal = guest.totalLines
         guest.sendLine(line)
         refresh()
@@ -375,20 +471,45 @@ final class ShellModel: ObservableObject {
         // trong vòng lặp sẽ publish `entries` mỗi dòng — với output dày đây
         // cũng là một nguồn lag.
         var output = entries[index].output
+        var errors = entries[index].errorCount
+        var warnings = entries[index].warningCount
         var appended = 0
         for raw in fresh {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
-            if output.isEmpty, echoesCommand(trimmed, command: entries[index].command) { continue }
+            if output.isEmpty, isEcho(trimmed, entry: entries[index]) { continue }
             if isPromptOnly(trimmed) { continue }
             output.append(raw)
+            switch ShellEntry.severity(of: raw) {
+            case .error: errors += 1
+            case .warning: warnings += 1
+            case .normal: break
+            }
             appended += 1
         }
+        var recounted = false
         if output.count > 400 {
             output.removeFirst(output.count - 400)
+            recounted = true
         }
         if appended > 0 {
-            entries[index].output = output
+            // Cắt 400 dòng thì số đếm cũ không còn đúng; đếm lại một lần.
+            if recounted {
+                errors = 0
+                warnings = 0
+                for line in output {
+                    switch ShellEntry.severity(of: line) {
+                    case .error: errors += 1
+                    case .warning: warnings += 1
+                    case .normal: break
+                    }
+                }
+            }
+            var entry = entries[index]
+            entry.output = output
+            entry.errorCount = errors
+            entry.warningCount = warnings
+            entries[index] = entry
         }
         if entries[index].status == .silent || entries[index].status == .waiting {
             entries[index].status = .running
@@ -405,8 +526,20 @@ final class ShellModel: ObservableObject {
         // Chỉ coi là prompt thật, không phải output tình cờ kết thúc bằng "$ ".
         guard line.contains("dev@devbox") || line.contains("root@devbox") else { return }
         guard entries[index].status != .done else { return }
-        entries[index].status = .done
-        entries[index].finishedAt = Date()
+        var entry = entries[index]
+        // `PROMPT_COMMAND` in mã thoát ngay trước prompt, nên nếu có mã mới
+        // kể từ lúc gửi lệnh thì đó chính là mã của lệnh này.
+        let console = GuestConsole.shared
+        if console.exitCount < exitBase {
+            exitBase = 0
+        }
+        if console.exitCount > exitBase {
+            entry.exitCode = console.lastExitCode
+            exitBase = console.exitCount
+        }
+        entry.status = .done
+        entry.finishedAt = Date()
+        entries[index] = entry
         state = .done
         silent = false
     }
@@ -461,23 +594,30 @@ final class ShellModel: ObservableObject {
     private func diagnose(_ fresh: [String], command: String) {
         // Script nội bộ dài hàng nghìn ký tự: điền lại vào ô nhập là vô nghĩa.
         guard command.count <= 300 else { return }
-        guard let line = fresh.last(where: { raw in
+        // Chỉ xét cuối batch: npm in mã lỗi ở giữa rồi còn vài dòng tổng kết.
+        // Nếu chỉ nhìn dòng khớp cuối cùng thì mất `code EACCES/ERESOLVE`.
+        let window = Array(fresh.suffix(40))
+        let scope = window.joined(separator: "\n").lowercased()
+        let markers = [
+            "no such file", "permission denied", "bad interpreter", "cannot execute",
+            "no space left", "temporary failure resolving", "could not resolve",
+            "network is unreachable", "unable to locate package",
+            "has no installation candidate", "npm error code", "npm err! code"
+        ]
+        guard markers.contains(where: { scope.contains($0) }) else { return }
+        let line = window.last { raw in
             let text = raw.lowercased()
             return text.contains("no such file") || text.contains("permission denied")
                 || text.contains("bad interpreter") || text.contains("cannot execute")
-                || text.contains("no space left") || text.contains("temporary failure resolving")
-                || text.contains("could not resolve") || text.contains("network is unreachable")
-                || text.contains("unable to locate package")
-                || text.contains("has no installation candidate")
-        }) else { return }
+                || text.contains("npm error code") || text.contains("npm err! code")
+        } ?? window.last ?? ""
         let key = "\(command)|\(line)"
         guard lastDiagnosis != key else { return }
         lastDiagnosis = key
-        let lower = line.lowercased()
         let token = Self.missingToken(in: line)
         let script = command.split(separator: " ").last.map(String.init) ?? command
         // Shebang dính `\r` (file lưu từ Windows): `/usr/bin/env: 'python3\r'`.
-        if lower.contains("bad interpreter") || (token?.contains("\r") ?? false) {
+        if scope.contains("bad interpreter") || (token?.contains("\r") ?? false) {
             fix = CommandSuggestion(
                 text: "bỏ CRLF rồi chạy lại",
                 detail: "file có \\r của Windows — shebang không đọc được",
@@ -486,9 +626,59 @@ final class ShellModel: ObservableObject {
             )
             return
         }
-        // npm ghi vào /usr/local (của root) → EACCES hàng loạt. Chữa đúng là
-        // đổi prefix, không phải `chmod +x`, nên phải bắt trước nhánh dưới.
-        if lower.contains("eacces") || (lower.contains("permission denied") && command.contains("npm")) {
+        if let code = Self.npmCode(in: window) {
+            switch code {
+            case "EACCES":
+                // npm ghi vào /usr/local (của root) → EACCES hàng loạt. Chữa
+                // đúng là đổi prefix, không phải `chmod +x`.
+                fix = CommandSuggestion(
+                    text: "đổi npm prefix về ~/.local",
+                    detail: "npm ghi vào /usr/local của root nên bị EACCES",
+                    kind: .fix,
+                    fill: "npm config set prefix ~/.local && export PATH=\"$HOME/.local/bin:$PATH\" && \(command)"
+                )
+                return
+            case "ERESOLVE":
+                fix = CommandSuggestion(
+                    text: "bỏ qua xung đột peer",
+                    detail: "ERESOLVE: hai gói đòi hai phiên bản khác nhau",
+                    kind: .fix,
+                    fill: "\(command) --legacy-peer-deps"
+                )
+                return
+            case "EINTEGRITY":
+                fix = CommandSuggestion(
+                    text: "xoá cache npm rồi cài lại",
+                    detail: "EINTEGRITY: cache hỏng (hay gặp sau khi hết đĩa)",
+                    kind: .fix,
+                    fill: "npm cache clean --force && \(command)"
+                )
+                return
+            case "E404", "E403":
+                let package = Self.npmPackage(in: window)
+                fix = CommandSuggestion(
+                    text: "kiểm tra tên gói",
+                    detail: package.map { "\($0) không có trên npm (sai tên?)" }
+                        ?? "npm không tìm thấy gói này",
+                    kind: .fix,
+                    fill: package.map { "npm view \($0) version" } ?? "npm search --no-description"
+                )
+                return
+            case "ETARGET":
+                let package = Self.npmPackage(in: window)
+                fix = CommandSuggestion(
+                    text: "xem phiên bản có thật",
+                    detail: "ETARGET: không có phiên bản bạn xin",
+                    kind: .fix,
+                    fill: package.map { "npm view \($0) versions --json | tail -8" }
+                        ?? "npm view . versions --json | tail -8"
+                )
+                return
+            default:
+                break
+            }
+        }
+        if scope.contains("eacces") {
             fix = CommandSuggestion(
                 text: "đổi npm prefix về ~/.local",
                 detail: "npm ghi vào /usr/local của root nên bị EACCES",
@@ -497,7 +687,7 @@ final class ShellModel: ObservableObject {
             )
             return
         }
-        if lower.contains("permission denied") {
+        if scope.contains("permission denied") {
             let target = token ?? script
             // Trên 9p (`security_model=none`) `chmod +x` có thể bị nuốt; gọi
             // thẳng trình thông dịch chắc ăn hơn và không mất quyền gì.
@@ -519,7 +709,7 @@ final class ShellModel: ObservableObject {
             return
         }
         // Ba nhóm lỗi môi trường hay gặp khi cài CLI/agent.
-        if lower.contains("no space left") {
+        if scope.contains("no space left") {
             fix = CommandSuggestion(
                 text: "dọn dung lượng máy ảo",
                 detail: "đĩa ảo đầy — xem df -h rồi xoá cache",
@@ -528,8 +718,8 @@ final class ShellModel: ObservableObject {
             )
             return
         }
-        if lower.contains("temporary failure resolving") || lower.contains("could not resolve")
-            || lower.contains("network is unreachable") {
+        if scope.contains("temporary failure resolving") || scope.contains("could not resolve")
+            || scope.contains("network is unreachable") {
             fix = CommandSuggestion(
                 text: "kiểm tra mạng máy ảo",
                 detail: "không phân giải được tên miền — apt/pip/npm sẽ lỗi hàng loạt",
@@ -538,7 +728,7 @@ final class ShellModel: ObservableObject {
             )
             return
         }
-        if lower.contains("unable to locate package") || lower.contains("has no installation candidate") {
+        if scope.contains("unable to locate package") || scope.contains("has no installation candidate") {
             fix = CommandSuggestion(
                 text: "cập nhật danh sách gói",
                 detail: "apt chưa biết gói này — cần apt-get update",
@@ -560,6 +750,31 @@ final class ShellModel: ObservableObject {
         case "js", "mjs", "cjs": return "node"
         default: return nil
         }
+    }
+
+    /// `npm error code ERESOLVE` → "ERESOLVE".
+    private static func npmCode(in lines: [String]) -> String? {
+        for raw in lines.reversed() {
+            let lower = raw.lowercased()
+            guard let range = lower.range(of: "npm error code ")
+                    ?? lower.range(of: "npm err! code ") else { continue }
+            let tail = lower[range.upperBound...]
+            let code = String(tail.prefix { !$0.isWhitespace })
+            if !code.isEmpty { return code.uppercased() }
+        }
+        return nil
+    }
+
+    /// Tên gói trong URL registry của npm (E404/ETARGET in ra).
+    private static func npmPackage(in lines: [String]) -> String? {
+        for raw in lines.reversed() {
+            guard let range = raw.range(of: "registry.npmjs.org/") else { continue }
+            let tail = raw[range.upperBound...]
+            let name = String(tail.prefix { $0 != " " && $0 != "/" && $0 != "?" })
+            let decoded = name.removingPercentEncoding ?? name
+            if !decoded.isEmpty { return decoded }
+        }
+        return nil
     }
 
     /// Lấy tên file/hướng dẫn từ dòng lỗi của bash/python.
@@ -745,6 +960,35 @@ final class ShellModel: ObservableObject {
     private func echoesCommand(_ line: String, command: String) -> Bool {
         guard line.contains(command) else { return false }
         return line.contains("$") || line.contains("#")
+    }
+
+    /// Bash/readline echo lệnh nội bộ dài thành nhiều dòng theo bề rộng màn
+    /// hình, nên ngoài so khớp cả câu còn phải bỏ các mảnh của đúng câu đó
+    /// trong lúc chưa có output thật.
+    private func isEcho(_ line: String, entry: ShellEntry) -> Bool {
+        if echoesCommand(line, command: entry.command) { return true }
+        guard entry.note != nil, let sent = entry.sentLine, sent.count > 20 else { return false }
+        let body = Self.echoBody(line)
+        guard body.count >= 4 else { return false }
+        return sent.contains(body) || body.contains(sent)
+    }
+
+    /// Bỏ tiền tố prompt (`dev@devbox:~$ ` / `root@devbox:/# `) và prompt phụ
+    /// (`> `) khỏi dòng echo.
+    private static func echoBody(_ line: String) -> String {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        while text.hasPrefix("> ") {
+            text = String(text.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        }
+        for marker in ["$ ", "# "] {
+            if let range = text.range(of: marker, options: .backwards) {
+                let head = text[..<range.lowerBound]
+                if head.contains("dev@devbox") || head.contains("root@devbox") {
+                    return String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+                }
+            }
+        }
+        return text
     }
 
     private func isPromptOnly(_ line: String) -> Bool {

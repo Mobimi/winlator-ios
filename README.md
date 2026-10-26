@@ -110,11 +110,14 @@ Tab **Shell** là nơi làm việc chính: một ô nhập lệnh gửi thẳng 
 |---|---|
 | **Gợi ý 4 lớp** | lịch sử bạn đã gõ (tần suất + gần đây + theo thư mục), từ điển ~100 lệnh kèm mô tả, lệnh con theo ngữ cảnh (`git ` → status/add/commit/push…, `npm ` → run dev/build…), và đường dẫn thật (`/mnt/share/…` đọc trực tiếp từ máy, `~/projects/<dự án>`). |
 | **Chip gợi ý** | hiện ngay trên bàn phím; bấm để điền, `Tab` để lấy gợi ý đầu, `Tab` lần nữa thì gửi Tab thật cho bash. |
-| **Bảng kết quả** | mỗi lệnh là một khối riêng: `$ lệnh` + output + trạng thái (`đang chờ` → `đang chạy` → `xong`). Nút ⤢ mở toàn màn hình, copy/share được. Tab **Console thô** để xem luồng serial gốc khi cần chẩn đoán. |
+| **Bảng kết quả** | mỗi lệnh là một khối riêng: `$ lệnh` + output + **✓/✗ mã thoát thật** + thời gian + số lỗi/cảnh báo. Giữ lâu rồi kéo để **bôi đen nhiều dòng** ở cả Kết quả và Console thô. Menu khối: Chép lệnh / Chép kết quả / Chép lệnh + kết quả / Điền lại / Chạy lại. Nút **Chỉ lỗi** ẩn lệnh sạch; nút ⤢ mở toàn màn hình. |
 | **Lịch sử bền** | ↑ / ↓ như terminal thật; lưu vào `Documents/logs/shell.json`, tắt app vẫn còn. |
 | **Snippet** | lưu sẵn `npm run dev`, `python3 -m http.server 8080`… bấm là chạy. |
-| **Trạng thái gửi** | `đã gửi` → `đang chạy` → `xong` để biết lệnh đã tới chưa. |
-| **Sửa lỗi nhanh** | gặp `command not found: rg` → hiện chip `apt install -y ripgrep`. |
+| **Trạng thái gửi** | `đã gửi` → `đang chạy` → `xong`, kèm ✓/✗ lấy từ `PROMPT_COMMAND` của bash (không đoán qua chữ "error"). |
+| **Sửa lỗi nhanh** | `command not found: rg` → chip `apt install -y ripgrep`; `npm error code EACCES` → đổi prefix `~/.local`; CRLF/`Permission denied`, hết đĩa, DNS… đều có chip sửa một chạm. |
+| **Đưa file vào máy ảo** | menu ⋯ → **Đưa file vào máy ảo…**, chọn file/thư mục từ app Files → chép vào `share/_import` (Linux thấy ở `/mnt/share/_import`). |
+| **Kiểm tra nhanh** | menu ⋯ → **Kiểm tra nhanh (đĩa/mạng/node)**: `df`, `free`, DNS, TLS tới registry npm, `python3/node/npm`, `npm prefix`. |
+| **Cỡ chữ + xuất log** | menu **Aa** đổi cỡ chữ Kết quả/Console thô (11–16 pt, lưu lại); **Lưu kết quả vào Files (share)** ghi `Devbox/share/devbox-output.txt`. |
 | **Cảnh báo** | `rm -rf /`, `mkfs`, `dd if=`… phải xác nhận mới chạy. |
 | **Khi Debian không trả lời** | băng trạng thái nói rõ đang ở bước nào: QEMU khởi động → máy ảo boot → nối console 4444 → chờ prompt `dev@devbox` → nhận byte đầu tiên. Lệnh chỉ được gửi khi đã thấy prompt. Gửi lệnh mà ~10 giây không có output và console im lặng thì app đánh dấu **Debian không trả lời** (không tự đóng/mở lại cổng); bấm **Ctrl-C** để ngắt lệnh treo hoặc **Nối lại**. |
 | **Ẩn bàn phím** | nút **Ẩn phím** trên hàng phím nhanh, và nút **Ẩn bàn phím** ngay trên bàn phím — không phải chạm ra ngoài màn hình. |
@@ -175,6 +178,7 @@ Không có kế hoạch nào biến iPhone thành máy dev chính. Nó là **má
 [x] 0.2.4 (8): sửa nhận output lệnh (socket 4444 + mốc dòng tuyệt đối + chờ prompt) — đã xác nhận trên máy
 [x] 0.2.4 (9): gửi được khi lệnh đang hỏi y/n; gộp publish console (1 tín hiệu/chunk, cache dòng) — CI build OK, chờ xác nhận trên máy
 [x] 0.2.4 (10): gợi ý sửa khi `No such file`/CRLF/`Permission denied` (tìm file trong share/Projects, tự chép vào `/mnt/share/_import`), fix npm global EACCES, docs đường đi của file — CI build OK (IPA 7.33 MB), chờ xác nhận trên máy
+[x] 0.3.0 (11): bôi đen nhiều dòng ở Kết quả + Console thô, ✓/✗ mã thoát thật, đếm lỗi + **Chỉ lỗi**, **Đưa file vào máy ảo**, **Kiểm tra nhanh**, PATH `~/.local` tự động mỗi lần boot, thêm mã lỗi npm (ERESOLVE/EINTEGRITY/E404/ETARGET) — CI build OK, chờ xác nhận trên máy
 [x] `portwatch` + `hostfwd` chạy thật trong CI: `127.0.0.1:5173` trả HTML
 [x] Terminal guest qua TCP 4444 + QMP 4445 + port watch + web preview tự mở
 [x] Tab **Shell**: ô nhập lệnh, lịch sử bền, snippet, trạng thái gửi, gợi ý 4 lớp, cảnh báo lệnh nguy hiểm

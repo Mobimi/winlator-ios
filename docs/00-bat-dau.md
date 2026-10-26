@@ -212,7 +212,21 @@ Ba lỗi thường gặp khi file được tạo trên Windows/PC:
 | `bash: ./devbox.py: /usr/bin/env: bad interpreter` | file có CRLF (`\r`) của Windows | `sed -i 's/\r$//' devbox.py` |
 | `bash: ./devbox.py: Permission denied` | thiếu quyền chạy | `chmod +x devbox.py` |
 
-Từ **0.2.4 (10)**, khi gặp lỗi app hiện thanh **gợi ý sửa** ngay trên bàn phím: tìm file cùng tên trong `share`/`Projects` (không phân biệt hoa thường), tự chép sang `/mnt/share/_import/...` nếu cần, rồi điền sẵn lệnh đúng — bấm một lần là chạy. Thanh này cũng nhận ra `npm ... EACCES`, `No space left on device`, lỗi DNS của `apt` và `bad interpreter`; bấm `×` để bỏ qua gợi ý sai.
+Từ **0.3.0 (11)**, không cần mở app Files để căn đúng thư mục: trong tab Shell, menu **⋯ → Đưa file vào máy ảo…**, chọn file/thư mục từ Files; app chép vào `Devbox/share/_import` và điền sẵn `cd /mnt/share/_import && ls -la`. Chép xong thì `cp` sang chỗ cần dùng:
+
+```bash
+cp /mnt/share/_import/devbox.py ~/projects/
+```
+
+Khi gặp lỗi, app hiện thanh **gợi ý sửa** ngay trên bàn phím: tìm file cùng tên trong `share`/`Projects` (không phân biệt hoa thường), tự chép sang `/mnt/share/_import/...` nếu cần, rồi điền sẵn lệnh đúng — bấm một lần là chạy. Thanh này nhận ra `No such file`, CRLF, `Permission denied`, `npm error code` (`EACCES`/`ERESOLVE`/`EINTEGRITY`/`E404`/`ETARGET`), `No space left on device`, lỗi DNS của `apt`; bấm `×` để bỏ qua gợi ý sai.
+
+Cùng bản này, tab Shell có thêm:
+
+- **Bôi đen để chép**: giữ lâu rồi kéo qua nhiều dòng ở cả **Kết quả** và **Console thô** (trước đây mỗi dòng là một `Text` riêng nên chỉ chọn được một dòng). Menu của từng khối có **Chép lệnh / Chép kết quả / Chép lệnh + kết quả / Điền lại lệnh / Chạy lại**; hàng phím nhanh có **Dán** và **Chép**.
+- **✓ / ✗ kèm mã thoát**: app bật `PROMPT_COMMAND` để lấy mã thoát thật của lệnh, thay vì đoán qua chữ "error".
+- **Đếm lỗi + lọc**: mỗi khối hiện `n lỗi · n cảnh báo`; nút **Chỉ lỗi** ở thanh trên ẩn các lệnh sạch.
+- **Kiểm tra nhanh**: menu **⋯ → Kiểm tra nhanh (đĩa/mạng/node)** chạy một lượt `df`, `free`, DNS, TLS tới registry npm, `python3/node/npm -v`, `npm prefix` — dùng khi npm/pip lỗi hàng loạt.
+- **Cỡ chữ + xuất log**: menu **Aa** trên thanh Kết quả đổi cỡ chữ (11/12/14/16 pt, lưu lại); menu **⋯ → Lưu kết quả vào Files (share)** ghi `Devbox/share/devbox-output.txt` để mở bằng app Files.
 
 > `Documents/Projects/<tên>` mà app tạo là thư mục phía iPhone, **không** phải `~/projects/<tên>` trong máy ảo. Hai thư mục khác nhau; muốn đưa file vào máy ảo thì đi qua `Devbox/share`.
 
