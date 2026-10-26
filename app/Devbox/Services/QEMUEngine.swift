@@ -112,9 +112,7 @@ final class QEMUEngine: ObservableObject {
         Self.trace("=== start ===")
         errno = 0
         let jitMap = Self.mapJITProbe()
-        let rwx = Self.probeExecMemory()
-        execNote = "\(jitMap.note) · \(rwx.note)"
-        Self.trace("exec memory: \(rwx.note)")
+        execNote = jitMap.note
         Self.trace("map jit: \(jitMap.note)")
         guard jitMap.ok else {
             Self.trace("map jit probe failed: \(jitMap.note)")
@@ -123,13 +121,9 @@ final class QEMUEngine: ObservableObject {
             saveDiagnostics()
             return
         }
-        guard rwx.execOK else {
-            Self.trace("exec memory probe failed: \(rwx.note)")
-            refreshLog()
-            state = .failed("iOS không cấp bộ nhớ thực thi cho QEMU: \(rwx.note)")
-            saveDiagnostics()
-            return
-        }
+        let rwx = Self.probeExecMemory()
+        execNote = "\(jitMap.note) · \(rwx.note)"
+        Self.trace("exec memory: \(rwx.note)")
 
         let availableMemory = DeviceProbe.availableMemoryMB()
         let memory = Self.budgetMemory(requested: memoryMB, available: availableMemory)
@@ -642,19 +636,38 @@ final class QEMUEngine: ObservableObject {
         var failures: [String] = []
         for megabytes in [256, 128, 64, 32, 16] {
             let bytes = megabytes << 20
-            let mapping = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
-            if let pointer = mapping.pointer {
-                let write = writeCodeTest(pointer)
+
+            let direct = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
+            if let pointer = direct.pointer {
                 munmap(pointer, bytes)
-                let text = failures.isEmpty ? "MAP_JIT \(megabytes) MB OK · \(write)" : "MAP_JIT \(megabytes) MB OK · \(write) · trước đó: \(failures.joined(separator: ", "))"
-                trace("map_jit: \(text)")
-                return (true, megabytes, text)
+                return jitProbeResult(megabytes, failures: failures, via: "mmap RWX")
             }
-            failures.append("\(megabytes) MB errno \(mapping.code)")
+            failures.append("\(megabytes) MB mmap errno \(direct.code)")
+
+            let reserved = mapMemory(bytes, protection: PROT_NONE, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
+            if let pointer = reserved.pointer {
+                errno = 0
+                let result = mprotect(pointer, bytes, PROT_READ | PROT_WRITE | PROT_EXEC)
+                let code = errno
+                munmap(pointer, bytes)
+                if result == 0 {
+                    return jitProbeResult(megabytes, failures: failures, via: "mmap NONE + mprotect RWX")
+                }
+                failures.append("\(megabytes) MB mprotect errno \(code)")
+            } else {
+                failures.append("\(megabytes) MB reserve errno \(reserved.code)")
+            }
         }
         let text = "MAP_JIT bị chặn: \(failures.joined(separator: ", "))"
         trace("map_jit: \(text)")
         return (false, 0, text)
+    }
+
+    private static func jitProbeResult(_ megabytes: Int, failures: [String], via: String) -> (ok: Bool, tbSize: Int, note: String) {
+        let head = "MAP_JIT \(megabytes) MB OK (\(via))"
+        let text = failures.isEmpty ? head : "\(head) · trước đó: \(failures.joined(separator: ", "))"
+        trace("map_jit: \(text)")
+        return (true, megabytes, text)
     }
 
     private static func writeCodeTest(_ pointer: UnsafeMutableRawPointer) -> String {
