@@ -26,7 +26,7 @@ enum Diagnostics {
         lines.append("UIBackgroundModes: \(backgroundModes())")
         lines.append("Engine: \(engine.state.text) · \(engine.uptimeText)")
         lines.append("Bước cuối: \(engine.lastStage)")
-        lines.append("JIT chạy mã: \(engine.execNote.isEmpty ? "chưa thử" : engine.execNote)")
+        lines.append("JIT: \(engine.execNote.isEmpty ? "chưa thử" : engine.execNote)")
         lines.append("Image: \(imageState())")
         if !engine.logLines.isEmpty {
             lines.append("QEMU log:")

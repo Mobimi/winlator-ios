@@ -8,7 +8,7 @@ struct SetupView: View {
     @ObservedObject private var engine = QEMUEngine.shared
     @StateObject private var ports = PortWatcher()
     @AppStorage("devbox.keepRunning") private var keepRunning = true
-    @AppStorage("devbox.singleCPU") private var singleCPU = false
+    @AppStorage("devbox.singleCPU") private var singleCPU = true
     @State private var copied = false
     @State private var preview: PreviewTarget?
     @State private var engineCheck: String?
@@ -157,7 +157,7 @@ struct SetupView: View {
                     Toggle("Chế độ chắc chắn (1 CPU, chậm hơn)", isOn: $singleCPU)
                         .disabled(engine.isRunning || engine.state == .starting)
                     if singleCPU {
-                        Text("Tắt tuỳ chọn này để chạy 4 CPU nhanh hơn. Nếu bật mà boot được thì giữ nguyên, báo lại để tác giả tối ưu.")
+                        Text("Đang chạy 1 CPU: chắc chắn boot được hơn nhưng chậm. Khi Linux đã lên prompt, tắt công tắc này rồi boot lại để dùng 4 CPU.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

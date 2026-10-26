@@ -110,20 +110,30 @@ final class QEMUEngine: ObservableObject {
         logLines = []
         prepareLog()
         Self.trace("=== start ===")
-        let jit = Self.probeExecMemory()
-        execNote = jit.note
-        Self.trace("exec memory: \(jit.note)")
-        guard jit.execOK else {
-            Self.trace("exec memory probe failed: \(jit.note)")
+        errno = 0
+        let jitMap = Self.mapJITProbe()
+        let rwx = Self.probeExecMemory()
+        execNote = "\(jitMap.note) · \(rwx.note)"
+        Self.trace("exec memory: \(rwx.note)")
+        Self.trace("map jit: \(jitMap.note)")
+        guard jitMap.ok else {
+            Self.trace("map jit probe failed: \(jitMap.note)")
             refreshLog()
-            state = .failed("iOS không cấp bộ nhớ thực thi cho QEMU: \(jit.note)")
+            state = .failed("iOS không cấp vùng JIT (MAP_JIT) cho QEMU: \(jitMap.note). Bật lại JIT bằng StikDebug rồi thử lại.")
+            saveDiagnostics()
+            return
+        }
+        guard rwx.execOK else {
+            Self.trace("exec memory probe failed: \(rwx.note)")
+            refreshLog()
+            state = .failed("iOS không cấp bộ nhớ thực thi cho QEMU: \(rwx.note)")
             saveDiagnostics()
             return
         }
 
         let availableMemory = DeviceProbe.availableMemoryMB()
         let memory = Self.budgetMemory(requested: memoryMB, available: availableMemory)
-        let arguments = buildArguments(image: image, share: share, cpuCount: cpuCount, memoryMB: memory, tbSize: jit.tbSize)
+        let arguments = buildArguments(image: image, share: share, cpuCount: cpuCount, memoryMB: memory, tbSize: jitMap.tbSize)
         lastArguments = arguments
         hasBooted = true
         state = .starting
@@ -249,7 +259,8 @@ final class QEMUEngine: ObservableObject {
     }
 
     private func buildArguments(image: InstalledImage, share: URL, cpuCount: Int, memoryMB: Int, tbSize: Int) -> [String] {
-        let single = UserDefaults.standard.bool(forKey: "devbox.singleCPU")
+        let stored = UserDefaults.standard.object(forKey: "devbox.singleCPU") as? Bool
+        let single = stored ?? true
         let cpus = single ? 1 : cpuCount
         var args: [String] = ["qemu-system-aarch64"]
         args += ["-M", "virt,highmem=on"]
@@ -603,12 +614,12 @@ final class QEMUEngine: ObservableObject {
             let bytes = megabytes << 20
             let mapping = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
             if let pointer = mapping.pointer {
-                let exec = runCodeTest(pointer)
+                let write = writeCodeTest(pointer)
                 munmap(pointer, bytes)
                 let tb = min(megabytes, 256)
                 let note = failures.isEmpty
-                    ? "RWX \(megabytes) MB OK · tb-size=\(tb) · \(exec)"
-                    : "RWX \(megabytes) MB OK · tb-size=\(tb) · \(exec) · bị chặn: \(failures.joined(separator: ", "))"
+                    ? "RWX \(megabytes) MB OK · tb-size=\(tb) · \(write)"
+                    : "RWX \(megabytes) MB OK · tb-size=\(tb) · \(write) · bị chặn: \(failures.joined(separator: ", "))"
                 return ExecProbe(execOK: true, tbSize: tb, note: note)
             }
             failures.append("\(megabytes) MB errno \(mapping.code)")
@@ -627,7 +638,26 @@ final class QEMUEngine: ObservableObject {
         return ExecProbe(execOK: false, tbSize: 0, note: "mmap RWX bị chặn: \(failures.joined(separator: ", "))")
     }
 
-    private static func runCodeTest(_ pointer: UnsafeMutableRawPointer) -> String {
+    static func mapJITProbe() -> (ok: Bool, tbSize: Int, note: String) {
+        var failures: [String] = []
+        for megabytes in [256, 128, 64, 32, 16] {
+            let bytes = megabytes << 20
+            let mapping = mapMemory(bytes, protection: PROT_READ | PROT_WRITE | PROT_EXEC, flags: MAP_PRIVATE | MAP_ANONYMOUS | devboxMapJit)
+            if let pointer = mapping.pointer {
+                let write = writeCodeTest(pointer)
+                munmap(pointer, bytes)
+                let text = failures.isEmpty ? "MAP_JIT \(megabytes) MB OK · \(write)" : "MAP_JIT \(megabytes) MB OK · \(write) · trước đó: \(failures.joined(separator: ", "))"
+                trace("map_jit: \(text)")
+                return (true, megabytes, text)
+            }
+            failures.append("\(megabytes) MB errno \(mapping.code)")
+        }
+        let text = "MAP_JIT bị chặn: \(failures.joined(separator: ", "))"
+        trace("map_jit: \(text)")
+        return (false, 0, text)
+    }
+
+    private static func writeCodeTest(_ pointer: UnsafeMutableRawPointer) -> String {
         let words: [UInt32] = [0x52800540, 0xD65F03C0]
         let code = pointer.assumingMemoryBound(to: UInt32.self)
         for (index, word) in words.enumerated() {
@@ -636,16 +666,8 @@ final class QEMUEngine: ObservableObject {
         devbox_icache_invalidate(pointer, words.count * 4)
         let written = code[0]
         let writtenText = "0x" + String(written, radix: 16)
-        QEMUEngine.trace("jit-exec: đọc lại bộ nhớ = \(writtenText) (cần 0x52800540)")
-        guard written == words[0] else {
-            return "ghi mã máy bị nuốt (\(writtenText))"
-        }
-        QEMUEngine.trace("jit-exec: gọi mã máy vừa ghi")
-        typealias Probe = @convention(c) () -> Int32
-        let function = unsafeBitCast(pointer, to: Probe.self)
-        let value = function()
-        QEMUEngine.trace("jit-exec: trả về \(value)")
-        return value == 42 ? "chạy mã OK" : "chạy mã SAI (\(value))"
+        trace("write-test: đọc lại bộ nhớ = \(writtenText) (cần 0x52800540)")
+        return written == words[0] ? "ghi/đọc mã máy OK" : "ghi mã máy bị nuốt (\(writtenText))"
     }
 
     private static func codeMemoryTest() -> [String] {
@@ -654,7 +676,7 @@ final class QEMUEngine: ObservableObject {
         let small = mapMemory(16 << 20, protection: PROT_READ | PROT_WRITE | PROT_EXEC)
         if let pointer = small.pointer {
             lines.append("mmap 16 MB RWX: OK")
-            lines.append("chạy thử mã máy: \(runCodeTest(pointer))")
+            lines.append("ghi thử mã máy: \(writeCodeTest(pointer))")
             munmap(pointer, 16 << 20)
         } else {
             lines.append("mmap 16 MB RWX: LỖI errno \(small.code) (\(String(cString: strerror(small.code))))")
