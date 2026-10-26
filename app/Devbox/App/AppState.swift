@@ -40,14 +40,14 @@ final class AppState: ObservableObject {
 
     func refreshDevice() {
         device = DeviceProbe.snapshot()
-        if device.jitReady {
+        if device.jit.isGranted {
             stopJITPolling()
         }
     }
 
     func startJITPolling() {
         refreshDevice()
-        guard !device.jitReady, jitTimer == nil else { return }
+        guard !device.jit.isGranted, jitTimer == nil else { return }
         let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
             self?.refreshDevice()
         }
